@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch cancels the first: a stale run that passes after a
+# failing one has landed is worse than no signal.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # --frozen-lockfile is the point of committing a lockfile: a dependency that resolved
+      # differently on a contributor machine has to fail here rather than ship.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build packages
+        run: pnpm build
+
+      # publint checks the published shape, attw checks that the types resolve under every
+      # module resolution mode. Both catch breakage that a passing build does not.
+      - name: Package correctness
+        run: |
+          pnpm publint
+          pnpm attw
+
+      # Budgets are committed per package, so an accidental dependency or a careless import
+      # fails the build instead of being noticed three releases later.
+      - name: Bundle size
+        run: pnpm size
+
+      - name: Build docs
+        run: pnpm docs:build

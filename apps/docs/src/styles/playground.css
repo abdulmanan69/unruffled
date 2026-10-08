@@ -1,0 +1,250 @@
+/*
+ * Playground layout.
+ *
+ * Controls on the left, stage on the right, both sticky-free so the page scrolls as one
+ * document. Panels are bordered rather than shadowed, which keeps four of them on screen
+ * without the page reading as a pile of floating cards.
+ */
+
+.pg {
+  display: grid;
+  grid-template-columns: 19rem minmax(0, 1fr);
+  gap: var(--s-5);
+  align-items: start;
+}
+
+.pg__controls {
+  display: grid;
+  gap: var(--s-5);
+  padding: var(--s-5);
+  margin: 0;
+  position: sticky;
+  top: 4.5rem;
+}
+
+.pg__group {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pg__group + .pg__group {
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+
+.pg__group legend {
+  padding: 0;
+}
+
+.pg__field {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.pg__field-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+.pg__field-label output {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--signal);
+}
+
+.pg__field input[type="range"] {
+  width: 100%;
+  accent-color: var(--signal);
+}
+
+.pg__field select {
+  width: 100%;
+  padding: var(--s-2);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-sm);
+}
+
+.pg__note {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--graphite);
+}
+
+.pg__check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+.pg__check input {
+  margin-top: 0.3em;
+  accent-color: var(--signal);
+}
+
+.pg__check small {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--graphite);
+}
+
+.pg__check:has(input:disabled) {
+  opacity: 0.5;
+}
+
+/* ---- Stage ------------------------------------------------------------- */
+
+.pg__stage {
+  display: grid;
+  gap: var(--s-5);
+  min-width: 0;
+}
+
+.pg__panel {
+  padding: var(--s-5);
+  display: grid;
+  gap: var(--s-4);
+  align-content: start;
+}
+
+.pg__panel-title {
+  font-size: var(--text-md);
+  margin: 0;
+}
+
+.pg__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+}
+
+.pg__hint,
+.pg__empty {
+  font-size: var(--text-sm);
+  color: var(--graphite);
+  margin: 0;
+}
+
+.pg__readout {
+  padding-top: var(--s-1);
+}
+
+/* ---- Failure ----------------------------------------------------------- */
+
+.pg__failure-summary {
+  padding: var(--s-3) var(--s-4);
+  background: var(--fault-soft);
+  border-left: 2px solid var(--fault);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.pg__kv {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5);
+  margin: 0;
+}
+
+.pg__kv div {
+  display: grid;
+  gap: 2px;
+}
+
+.pg__kv dd {
+  margin: 0;
+}
+
+.pg__fields {
+  margin: 0;
+  padding-left: var(--s-5);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+/* ---- Diagnostics ------------------------------------------------------- */
+
+.pg__diagnostics {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pg__diagnostics li {
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--radius-sm);
+  background: var(--fault-soft);
+  border-left: 2px solid var(--fault);
+}
+
+.pg__diagnostics li[data-severity="warning"] {
+  background: var(--held-soft);
+  border-left-color: var(--held);
+}
+
+.pg__diag-head {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.pg__diag-head code {
+  font-weight: 500;
+  color: var(--fault);
+}
+
+.pg__diagnostics li[data-severity="warning"] .pg__diag-head code {
+  color: var(--held);
+}
+
+.pg__diag-detail,
+.pg__diag-fix {
+  margin-top: var(--s-1);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.pg__diag-fix {
+  color: var(--graphite);
+}
+
+/* ---- Code -------------------------------------------------------------- */
+
+.pg__code {
+  margin: 0;
+  padding: var(--s-4);
+  overflow-x: auto;
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 62rem) {
+  .pg {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pg__controls {
+    position: static;
+  }
+}

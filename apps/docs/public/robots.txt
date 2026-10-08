@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://abdulmanan69.github.io/unruffled/sitemap-index.xml

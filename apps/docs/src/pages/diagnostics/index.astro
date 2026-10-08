@@ -1,0 +1,184 @@
+---
+/**
+ * The diagnostics index.
+ *
+ * Generated from the rule table in `@unruffled/core/diagnostics`, which is the same object
+ * the runtime bus reports from, the ESLint plugin implements and the test matcher asserts
+ * against. The wording here cannot drift from the wording in your console, because there is
+ * only one copy of it.
+ */
+import Base from "../../layouts/Base.astro";
+import { RULES, type DiagnosticCode } from "@unruffled/core/diagnostics";
+import { href } from "../../lib/site";
+
+const codes = Object.keys(RULES) as DiagnosticCode[];
+const errors = codes.filter((code) => RULES[code].severity === "error");
+const warnings = codes.filter((code) => RULES[code].severity === "warning");
+const staticallyChecked = codes.filter((code) => RULES[code].static);
+---
+
+<Base
+  title="Diagnostics"
+  path="diagnostics"
+  description="The nine unruffled diagnostic rules. Each fires when the wiring is wrong, carries a stable code, and is reported by the runtime bus, the ESLint plugin and the test matchers from one shared table."
+>
+  <header class="page-head">
+    <p class="label">Reference</p>
+    <h1>Diagnostics</h1>
+    <p class="page-lede">
+      Nine rules. Each one fires when a call site is <em>wrong</em>, never when a feature is merely switched
+      on — a warning that fires on correct code teaches people to silence warnings.
+    </p>
+  </header>
+
+  <dl class="summary">
+    <div>
+      <dt class="label">Rules</dt>
+      <dd>{codes.length}</dd>
+    </div>
+    <div>
+      <dt class="label">Errors</dt>
+      <dd>{errors.length}</dd>
+    </div>
+    <div>
+      <dt class="label">Warnings</dt>
+      <dd>{warnings.length}</dd>
+    </div>
+    <div>
+      <dt class="label">Statically checkable</dt>
+      <dd>{staticallyChecked.length}</dd>
+    </div>
+  </dl>
+
+  <p class="prose">
+    Everything here is development-only. The rule table lives on its own subpath and nothing a production
+    build reaches imports it, so these strings are not in your shipped module graph at all. Suppress a rule
+    with <code>diagnostics.suppress("UX1001")</code> if you have a reason.
+  </p>
+
+  <ul class="rules">
+    {
+      codes.map((code) => {
+        const rule = RULES[code];
+        return (
+          <li class="rules__item" data-severity={rule.severity}>
+            <a class="rules__link" href={href(`diagnostics/${code.toLowerCase()}`)}>
+              <span class="rules__code">{code}</span>
+              <span class="rules__title">{rule.title}</span>
+            </a>
+            <p class="rules__detail">{rule.detail}</p>
+            <p class="rules__meta">
+              <span>{rule.severity}</span>
+              <span aria-hidden="true">·</span>
+              <span>{rule.static ? "ESLint rule available" : "runtime only"}</span>
+            </p>
+          </li>
+        );
+      })
+    }
+  </ul>
+</Base>
+
+<style>
+  .page-head {
+    display: grid;
+    gap: var(--s-3);
+    max-width: 68ch;
+    margin-bottom: var(--s-6);
+  }
+
+  .page-lede {
+    color: var(--ink-soft);
+  }
+
+  .summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-6);
+    margin: 0 0 var(--s-6);
+    padding-bottom: var(--s-5);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .summary div {
+    display: grid;
+    gap: var(--s-1);
+  }
+
+  .summary dd {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--tracking-display);
+  }
+
+  .rules {
+    display: grid;
+    gap: 0;
+    margin: var(--s-6) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .rules__item {
+    padding: var(--s-5) 0 var(--s-5) var(--s-4);
+    border-top: 1px solid var(--rule);
+    border-left: 2px solid var(--fault);
+  }
+
+  .rules__item[data-severity="warning"] {
+    border-left-color: var(--held);
+  }
+
+  .rules__item:last-child {
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .rules__link {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-3);
+    text-decoration: none;
+  }
+
+  .rules__code {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--fault);
+  }
+
+  .rules__item[data-severity="warning"] .rules__code {
+    color: var(--held);
+  }
+
+  .rules__title {
+    font-family: var(--font-display);
+    font-size: var(--text-md);
+    letter-spacing: var(--tracking-tight);
+    text-decoration-line: underline;
+    text-decoration-color: transparent;
+    transition: text-decoration-color var(--dur-1) var(--ease);
+  }
+
+  .rules__link:hover .rules__title {
+    text-decoration-color: var(--signal);
+  }
+
+  .rules__detail {
+    margin-top: var(--s-2);
+    max-width: 72ch;
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+
+  .rules__meta {
+    margin-top: var(--s-2);
+    display: flex;
+    gap: var(--s-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--graphite);
+  }
+</style>

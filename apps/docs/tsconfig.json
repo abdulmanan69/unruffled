@@ -1,0 +1,15 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "types": ["astro/client"],
+    "paths": {
+      "@unruffled/core": ["../../packages/core/src/index.ts"],
+      "@unruffled/core/*": ["../../packages/core/src/*"],
+      "@unruffled/react": ["../../packages/react/src/index.ts"]
+    }
+  },
+  "include": [".astro/types.d.ts", "src/**/*", "astro.config.mjs"],
+  "exclude": ["dist"]
+}

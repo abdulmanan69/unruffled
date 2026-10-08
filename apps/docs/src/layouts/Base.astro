@@ -1,0 +1,376 @@
+---
+/**
+ * The only layout.
+ *
+ * Two details worth pointing out, both of which are the kind of thing this library is about.
+ *
+ * The theme script runs before paint, synchronously in `<head>`. A theme applied in a
+ * `useEffect` produces a flash of the wrong colour scheme on every cold load, which is the
+ * dark-mode equivalent of a spinner flash.
+ *
+ * `<Announcer />` is mounted here, once, for the whole site. Every live demo on every page
+ * announces its outcome through it. That is dogfooding rather than decoration: if the
+ * library's own documentation did not mount it, the documentation would be tripping UX1003.
+ */
+import "../styles/tokens.css";
+import "../styles/base.css";
+import { Announcer } from "@unruffled/react";
+import { SITE, TOP_NAV, NAV, href, asset, absolute, absoluteAsset } from "../lib/site";
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Path of the current page, so the nav can mark it. */
+  path?: string;
+  /** Set false on the home page, which lays out its own full-width sections. */
+  sidebar?: boolean;
+}
+
+const { title, description = SITE.description, path = "", sidebar = true } = Astro.props;
+
+const pageTitle = path === "" ? `${SITE.name} — ${SITE.tagline}` : `${title} · ${SITE.name}`;
+const canonical = absolute(path);
+const ogImage = absoluteAsset("og.png");
+const isCurrent = (linkPath: string): boolean => linkPath === path;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+
+    <meta name="theme-color" content="#fbfaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#101216" media="(prefers-color-scheme: dark)" />
+
+    <link rel="icon" href={asset("favicon.svg")} type="image/svg+xml" />
+    <link rel="sitemap" href={asset("sitemap-index.xml")} />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
+
+    <script is:inline>
+      // Runs before first paint. Reading the stored choice in an effect instead would show
+      // the wrong colour scheme for a frame on every cold load.
+      try {
+        const stored = localStorage.getItem("unruffled-theme");
+        if (stored === "light" || stored === "dark") {
+          document.documentElement.dataset.theme = stored;
+        }
+      } catch {
+        // Storage blocked. The system preference still applies via the media query.
+      }
+    </script>
+  </head>
+
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="masthead">
+      <div class="shell masthead__inner">
+        <a class="brand" href={href()}>
+          <span class="brand__mark" aria-hidden="true"></span>
+          <span class="brand__name">unruffled</span>
+        </a>
+
+        <nav class="masthead__nav" aria-label="Main">
+          {
+            TOP_NAV.map((link) => (
+              <a href={href(link.path)} aria-current={isCurrent(link.path) ? "page" : undefined}>
+                {link.label}
+              </a>
+            ))
+          }
+          <a href={SITE.repo} rel="noreferrer noopener">GitHub</a>
+        </nav>
+
+        <button class="theme-toggle" type="button" data-theme-toggle>
+          <span class="sr-only">Switch colour theme</span>
+          <span aria-hidden="true" data-theme-icon></span>
+        </button>
+      </div>
+    </header>
+
+    {
+      sidebar ? (
+        <div class="shell docs">
+          <nav class="docs__nav" aria-label="Documentation">
+            {NAV.map((section) => (
+              <div class="docs__section">
+                <p class="label">{section.title}</p>
+                <ul>
+                  {section.links.map((link) => (
+                    <li>
+                      <a href={href(link.path)} aria-current={isCurrent(link.path) ? "page" : undefined}>
+                        {link.label}
+                      </a>
+                      {link.hint ? <span class="docs__hint">{link.hint}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </nav>
+
+          <main id="main" class="docs__main">
+            <slot />
+          </main>
+        </div>
+      ) : (
+        <main id="main">
+          <slot />
+        </main>
+      )
+    }
+
+    <footer class="footer">
+      <div class="shell footer__inner">
+        <p class="footer__note">
+          MIT licensed. Built by <a href="https://github.com/abdulmanan69" rel="noreferrer noopener"
+            >Abdul Manan</a
+          >.
+        </p>
+        <nav class="footer__links" aria-label="Footer">
+          <a href={SITE.repo} rel="noreferrer noopener">Source</a>
+          <a href={SITE.npm} rel="noreferrer noopener">npm</a>
+          <a href={href("accessibility")}>Accessibility</a>
+        </nav>
+      </div>
+    </footer>
+
+    <Announcer client:load />
+
+    <script is:inline>
+      const toggle = document.querySelector("[data-theme-toggle]");
+      const icon = document.querySelector("[data-theme-icon]");
+
+      const resolved = () =>
+        document.documentElement.dataset.theme ??
+        (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+
+      const paint = () => {
+        if (icon) icon.textContent = resolved() === "dark" ? "☾" : "☀";
+      };
+
+      toggle?.addEventListener("click", () => {
+        const next = resolved() === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        try {
+          localStorage.setItem("unruffled-theme", next);
+        } catch {
+          // Storage blocked. The choice still applies for this page view.
+        }
+        paint();
+      });
+
+      paint();
+    </script>
+
+    <style>
+      /* ---- Masthead ---------------------------------------------------- */
+
+      .masthead {
+        position: sticky;
+        top: 0;
+        z-index: var(--z-sticky);
+        background: color-mix(in srgb, var(--paper) 88%, transparent);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--rule);
+      }
+
+      .masthead__inner {
+        display: flex;
+        align-items: center;
+        gap: var(--s-5);
+        height: 3.5rem;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-2);
+        text-decoration: none;
+        font-family: var(--font-display);
+        font-weight: 600;
+        letter-spacing: var(--tracking-display);
+        margin-right: auto;
+      }
+
+      /*
+       * The mark is the trace reduced to one glyph: a hatched gap, then a filled bar. It is
+       * the delay threshold and the affordance that follows it.
+       */
+      .brand__mark {
+        width: 1.25rem;
+        height: 0.5rem;
+        border-radius: 2px;
+        background:
+          linear-gradient(to right, transparent 0 38%, var(--signal) 38% 100%),
+          repeating-linear-gradient(135deg, var(--rule-strong) 0 1px, transparent 1px 5px);
+      }
+
+      .masthead__nav {
+        display: flex;
+        gap: var(--s-4);
+        font-size: var(--text-sm);
+      }
+
+      .masthead__nav a {
+        text-decoration: none;
+        color: var(--ink-soft);
+        padding-block: var(--s-1);
+      }
+
+      .masthead__nav a:hover {
+        color: var(--ink);
+      }
+
+      .masthead__nav a[aria-current="page"] {
+        color: var(--ink);
+        box-shadow: inset 0 -2px 0 var(--signal);
+      }
+
+      .theme-toggle {
+        display: grid;
+        place-items: center;
+        width: 2rem;
+        height: 2rem;
+        border: 1px solid var(--rule);
+        border-radius: var(--radius-sm);
+        background: var(--paper-raised);
+        color: var(--ink-soft);
+        cursor: pointer;
+        font-size: 0.875rem;
+        line-height: 1;
+      }
+
+      .theme-toggle:hover {
+        border-color: var(--rule-strong);
+        color: var(--ink);
+      }
+
+      /* ---- Docs shell -------------------------------------------------- */
+
+      .docs {
+        display: grid;
+        grid-template-columns: 15rem minmax(0, 1fr);
+        gap: var(--s-8);
+        align-items: start;
+        padding-block: var(--s-7) var(--s-9);
+      }
+
+      .docs__nav {
+        position: sticky;
+        top: 4.5rem;
+        display: grid;
+        gap: var(--s-5);
+      }
+
+      .docs__section ul {
+        list-style: none;
+        margin: var(--s-2) 0 0;
+        padding: 0;
+        display: grid;
+        gap: var(--s-1);
+      }
+
+      .docs__section li {
+        display: grid;
+      }
+
+      .docs__section a {
+        text-decoration: none;
+        font-size: var(--text-sm);
+        color: var(--ink-soft);
+        padding: var(--s-1) var(--s-2);
+        margin-left: calc(var(--s-2) * -1);
+        border-radius: var(--radius-sm);
+      }
+
+      .docs__section a:hover {
+        background: var(--paper-sunk);
+        color: var(--ink);
+      }
+
+      .docs__section a[aria-current="page"] {
+        background: var(--signal-soft);
+        color: var(--signal-ink);
+        font-weight: 500;
+      }
+
+      .docs__hint {
+        font-size: var(--text-xs);
+        color: var(--graphite);
+        padding-left: var(--s-2);
+        margin-left: calc(var(--s-2) * -1);
+      }
+
+      .docs__main {
+        min-width: 0;
+      }
+
+      @media (max-width: 62rem) {
+        .docs {
+          grid-template-columns: minmax(0, 1fr);
+          gap: var(--s-6);
+        }
+        .docs__nav {
+          position: static;
+          grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+          padding-bottom: var(--s-5);
+          border-bottom: 1px solid var(--rule);
+        }
+        .docs__hint {
+          display: none;
+        }
+      }
+
+      @media (max-width: 40rem) {
+        .masthead__nav {
+          gap: var(--s-3);
+        }
+      }
+
+      /* ---- Footer ------------------------------------------------------ */
+
+      .footer {
+        border-top: 1px solid var(--rule);
+        padding-block: var(--s-6);
+      }
+
+      .footer__inner {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: var(--s-4);
+        font-size: var(--text-sm);
+        color: var(--graphite);
+      }
+
+      .footer__links {
+        display: flex;
+        gap: var(--s-4);
+      }
+    </style>
+  </body>
+</html>

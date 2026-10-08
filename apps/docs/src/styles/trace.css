@@ -1,0 +1,290 @@
+/*
+ * Timing-trace figure.
+ *
+ * The segment fills encode the state taxonomy directly: the "busy but nothing shown" phase
+ * is drawn as a hairline hatch rather than a solid bar, because the user genuinely cannot
+ * see anything during it. That distinction is the one the whole library turns on, so the
+ * figure has to make it visible rather than merely label it.
+ */
+
+.trace {
+  display: grid;
+  gap: var(--s-5);
+}
+
+.trace__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-5);
+}
+
+.trace__btn {
+  min-width: 11rem;
+}
+
+.trace__readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5);
+  margin: 0;
+}
+
+.trace__readout div {
+  display: grid;
+  gap: 2px;
+}
+
+.trace__readout dd {
+  margin: 0;
+}
+
+.trace__value {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.trace__value--hidden {
+  color: var(--graphite);
+}
+.trace__value--shown,
+.trace__value--settling {
+  color: var(--signal);
+}
+.trace__value--success {
+  color: var(--settled);
+}
+.trace__value--error,
+.trace__value--backoff {
+  color: var(--fault);
+}
+
+/* ---- Plot ------------------------------------------------------------- */
+
+.trace__plot {
+  position: relative;
+  padding-top: var(--s-6);
+}
+
+.trace__axis {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--s-6);
+}
+
+/* Tick labels sit on the upper row, threshold markers on the lower one. */
+.trace__tick-label {
+  z-index: 1;
+}
+
+.trace__tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: var(--s-2);
+  background: var(--rule-strong);
+  transform: translateX(-0.5px);
+}
+
+.trace__tick-label {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 0;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--graphite);
+  white-space: nowrap;
+}
+
+/* The first tick label would otherwise be clipped by the container edge. */
+.trace__tick:first-child .trace__tick-label {
+  transform: none;
+}
+
+.trace__lane {
+  position: relative;
+  height: 2.75rem;
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* ---- Thresholds ------------------------------------------------------- */
+
+.trace__threshold {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--rule-strong);
+  z-index: 2;
+}
+
+.trace__threshold--delay {
+  background: var(--signal);
+  opacity: 0.55;
+}
+
+.trace__threshold--min {
+  background: var(--signal);
+  opacity: 0.3;
+}
+
+/*
+ * Threshold labels live in the axis strip, above the lane.
+ *
+ * Inside the lane they sat underneath the segment fill and became unreadable the moment the
+ * trace reached them, which is exactly when they matter most.
+ */
+.trace__marker {
+  position: absolute;
+  bottom: 0;
+  padding-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--signal);
+  white-space: nowrap;
+  border-left: 1px solid var(--signal);
+}
+
+.trace__marker--min {
+  opacity: 0.7;
+}
+
+/*
+ * The outcome.
+ *
+ * A marker rather than a filled block: settling is a duration, but succeeding is an instant,
+ * and giving it an invented width would misreport the measurement the figure exists to show.
+ */
+.trace__end {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 1px;
+  z-index: 3;
+  transform: translateX(-1px);
+}
+
+.trace__end--success {
+  background: var(--settled);
+}
+
+.trace__end--error {
+  background: var(--fault);
+}
+
+/* ---- Segments --------------------------------------------------------- */
+
+.trace__segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+}
+
+/*
+ * Work has started and the user can see nothing.
+ *
+ * Drawn as a faint hatch rather than a solid fill: time is passing and the request is
+ * running, but the interface is silent. A solid bar here would claim feedback that is not
+ * being given.
+ */
+.trace__segment--hidden {
+  background-image: repeating-linear-gradient(135deg, var(--rule-strong) 0 1px, transparent 1px 6px);
+}
+
+.trace__segment--shown {
+  background: var(--signal);
+  opacity: 0.85;
+}
+
+/*
+ * Holding a settled result so the affordance meets its minimum duration.
+ *
+ * Same hue as `shown`, lighter: to the user this is still "working", and drawing it as a
+ * different colour would imply a state they can perceive.
+ */
+.trace__segment--settling {
+  background: var(--signal);
+  opacity: 0.4;
+}
+
+.trace__segment--success {
+  background: var(--settled);
+}
+
+.trace__segment--error,
+.trace__segment--backoff {
+  background: var(--fault);
+}
+
+/* ---- Legend ----------------------------------------------------------- */
+
+.trace__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trace__legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.trace__swatch {
+  width: 1.25rem;
+  height: 0.5rem;
+  flex: none;
+  border-radius: 2px;
+}
+
+.trace__swatch--hidden {
+  background-image: repeating-linear-gradient(135deg, var(--rule-strong) 0 1px, transparent 1px 5px);
+  border: 1px solid var(--rule);
+}
+.trace__swatch--shown {
+  background: var(--signal);
+  opacity: 0.85;
+}
+.trace__swatch--settling {
+  background: var(--signal);
+  opacity: 0.4;
+}
+.trace__swatch--success {
+  background: var(--settled);
+}
+.trace__swatch--error {
+  background: var(--fault);
+}
+
+.trace__legend-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--graphite);
+}
+
+@media (max-width: 34rem) {
+  .trace__controls {
+    gap: var(--s-4);
+  }
+  .trace__readout {
+    gap: var(--s-4);
+  }
+  /* Every other axis label, so the ticks stay readable at phone width. */
+  .trace__tick:nth-child(even) .trace__tick-label {
+    display: none;
+  }
+}

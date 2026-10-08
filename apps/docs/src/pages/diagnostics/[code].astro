@@ -1,0 +1,128 @@
+---
+/**
+ * One page per diagnostic code, generated from the rule table.
+ *
+ * This is what makes the `Docs:` line the console prints a real link. A diagnostic that
+ * tells you a code and then has nowhere to send you is only half a diagnostic.
+ */
+import Base from "../../layouts/Base.astro";
+import { RULES, type DiagnosticCode } from "@unruffled/core/diagnostics";
+import { href } from "../../lib/site";
+
+export function getStaticPaths() {
+  return (Object.keys(RULES) as DiagnosticCode[]).map((code) => ({
+    params: { code: code.toLowerCase() },
+    props: { code },
+  }));
+}
+
+interface Props {
+  code: DiagnosticCode;
+}
+
+const { code } = Astro.props;
+const rule = RULES[code];
+
+const codes = Object.keys(RULES) as DiagnosticCode[];
+const index = codes.indexOf(code);
+const previous = index > 0 ? codes[index - 1] : undefined;
+const next = index < codes.length - 1 ? codes[index + 1] : undefined;
+
+const suppressSnippet = `import { diagnostics } from "@unruffled/core/diagnostics";
+
+diagnostics.suppress("${code}");`;
+
+const detection = rule.static
+  ? "This condition is decidable from source, so it is reported both at runtime by the diagnostics bus and statically by @unruffled/eslint-plugin. The lint rule will usually reach you first."
+  : "This condition depends on what actually happened at runtime, such as how long a request took or whether a live region was mounted when it settled. It is reported by the diagnostics bus only; no lint rule can decide it from source.";
+---
+
+<Base title={`${code} · ${rule.title}`} path={`diagnostics/${code.toLowerCase()}`} description={rule.detail}>
+  <nav class="crumb" aria-label="Breadcrumb">
+    <a href={href("diagnostics")}>Diagnostics</a>
+    <span aria-hidden="true">/</span>
+    <span>{code}</span>
+  </nav>
+
+  <header class="page-head" data-severity={rule.severity}>
+    <p class="label">{rule.severity === "error" ? "Error" : "Warning"}</p>
+    <h1>{rule.title}</h1>
+  </header>
+
+  <div class="prose">
+    <h2>What went wrong</h2>
+    <p>{rule.detail}</p>
+
+    <h2>How to fix it</h2>
+    <p>{rule.fix}</p>
+
+    <h2>How it is detected</h2>
+    <p>{detection}</p>
+
+    <h2>Suppressing it</h2>
+    <p>
+      If you have considered it and the rule is wrong for your case, silence that one code for the session.
+      The bus already de-duplicates by code and call site, so you will not need this to quiet noise.
+    </p>
+    <pre><code>{suppressSnippet}</code></pre>
+
+    <h2>Does this cost anything in production?</h2>
+    <p>
+      No. The rule table and the bus live on the <code>@unruffled/core/diagnostics</code> subpath, which nothing
+      in a production code path imports. Every report site is behind a build-time flag, so the call and its arguments
+      are removed outright rather than left as dead code.
+    </p>
+  </div>
+
+  <nav class="pager" aria-label="Rules">
+    {previous ? <a href={href(`diagnostics/${previous.toLowerCase()}`)}>&larr; {previous}</a> : <span />}
+    {next ? <a href={href(`diagnostics/${next.toLowerCase()}`)}>{next} &rarr;</a> : <span />}
+  </nav>
+</Base>
+
+<style>
+  .crumb {
+    display: flex;
+    gap: var(--s-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--graphite);
+    margin-bottom: var(--s-4);
+  }
+
+  .crumb a {
+    color: var(--graphite);
+  }
+
+  .page-head {
+    display: grid;
+    gap: var(--s-3);
+    max-width: 68ch;
+    margin-bottom: var(--s-6);
+    padding-left: var(--s-4);
+    border-left: 2px solid var(--fault);
+  }
+
+  .page-head[data-severity="warning"] {
+    border-left-color: var(--held);
+  }
+
+  .page-head .label {
+    color: var(--fault);
+  }
+
+  .page-head[data-severity="warning"] .label {
+    color: var(--held);
+  }
+
+  .pager {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--s-4);
+    margin-top: var(--s-8);
+    padding-top: var(--s-5);
+    border-top: 1px solid var(--rule);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+  }
+</style>

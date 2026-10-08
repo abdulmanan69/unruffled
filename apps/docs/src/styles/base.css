@@ -1,0 +1,409 @@
+/*
+ * Base styles.
+ *
+ * Borders carry the structure on this site and shadows are reserved for things that
+ * genuinely float, which keeps the page quiet enough that the timing traces read as the
+ * loudest element. That is deliberate: the traces are the argument.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+  letter-spacing: var(--tracking-tight);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Everything here is short enough that a reduced-motion user loses nothing by it stopping. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Type ------------------------------------------------------------- */
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-tight);
+  margin: 0;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--text-3xl);
+}
+h2 {
+  font-size: var(--text-2xl);
+}
+h3 {
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-tight);
+}
+h4 {
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-tight);
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--rule-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-1) var(--ease);
+}
+
+a:hover {
+  text-decoration-color: var(--signal);
+}
+
+/*
+ * A visible focus ring on every interactive element, always.
+ *
+ * `:focus-visible` rather than `:focus` so a mouse click does not leave a ring behind, and
+ * no `outline: none` anywhere without a replacement.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  letter-spacing: var(--tracking-mono);
+  font-variant-ligatures: none;
+}
+
+/* ---- Labels ----------------------------------------------------------- */
+
+/*
+ * The eyebrow label, used for section kickers and for state names under a trace.
+ *
+ * Mono rather than sans because every one of these is a literal: a state value, a
+ * millisecond reading, a diagnostic code.
+ */
+.label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--graphite);
+  margin: 0;
+}
+
+.label--signal {
+  color: var(--signal);
+}
+.label--settled {
+  color: var(--settled);
+}
+.label--fault {
+  color: var(--fault);
+}
+.label--held {
+  color: var(--held);
+}
+
+/* ---- Layout ----------------------------------------------------------- */
+
+.shell {
+  width: 100%;
+  max-width: var(--page-max);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.stack > * + * {
+  margin-top: var(--flow, var(--s-4));
+}
+
+.rule {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--s-4);
+  top: var(--s-2);
+  z-index: var(--z-overlay);
+  padding: var(--s-2) var(--s-4);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  transform: translateY(-200%);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* ---- Surfaces --------------------------------------------------------- */
+
+.panel {
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+}
+
+.panel--sunk {
+  background: var(--paper-sunk);
+}
+
+/* ---- Buttons ---------------------------------------------------------- */
+
+/*
+ * Demo button styling.
+ *
+ * `[aria-disabled="true"]` is styled instead of `:disabled`, because the library never
+ * disables a trigger. The cursor stays `default` rather than `not-allowed`: the control is
+ * still focusable and still meaningful, it is simply busy.
+ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  min-height: 2.5rem;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+
+.btn:hover {
+  background: var(--paper-sunk);
+  border-color: var(--graphite);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn--primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.btn--primary:hover {
+  background: var(--ink-soft);
+  border-color: var(--ink-soft);
+}
+
+.btn--danger {
+  border-color: var(--fault);
+  color: var(--fault);
+}
+
+.btn--danger:hover {
+  background: var(--fault-soft);
+  border-color: var(--fault);
+}
+
+.btn[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.btn[data-state="success"] {
+  border-color: var(--settled);
+  color: var(--settled);
+}
+
+.btn[data-state="error"],
+.btn[data-state="backoff"] {
+  border-color: var(--fault);
+  color: var(--fault);
+}
+
+/*
+ * A filled button needs the fill recoloured, not the text.
+ *
+ * Tinting the label alone left dark green on near-black, which is the kind of unreadable
+ * success state this library exists to stop people shipping.
+ */
+.btn--primary[data-state="success"] {
+  background: var(--settled);
+  border-color: var(--settled);
+  color: var(--paper);
+}
+
+.btn--primary[data-state="error"],
+.btn--primary[data-state="backoff"] {
+  background: var(--fault);
+  border-color: var(--fault);
+  color: var(--paper);
+}
+
+/*
+ * The pending glyph.
+ *
+ * A rotating arc rather than a set of bouncing dots: one element, compositor-only, and it
+ * stops being animated under reduced motion while staying visible, so the state is still
+ * legible.
+ */
+.spinner {
+  width: 0.875em;
+  height: 0.875em;
+  flex: none;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-pill);
+  animation: spin 620ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-top-color: currentColor;
+    opacity: 0.45;
+  }
+}
+
+/* ---- Prose ------------------------------------------------------------ */
+
+.prose {
+  max-width: var(--measure);
+  color: var(--ink-soft);
+}
+
+.prose > * + * {
+  margin-top: var(--s-4);
+}
+
+.prose h2 {
+  margin-top: var(--s-7);
+  color: var(--ink);
+}
+
+.prose h3 {
+  margin-top: var(--s-6);
+  color: var(--ink);
+}
+
+.prose ul,
+.prose ol {
+  margin: 0;
+  padding-left: var(--s-5);
+}
+
+.prose li + li {
+  margin-top: var(--s-2);
+}
+
+.prose :not(pre) > code {
+  padding: 0.1em 0.35em;
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+}
+
+.prose pre {
+  margin: 0;
+  padding: var(--s-4);
+  overflow-x: auto;
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  line-height: 1.6;
+}
+
+.prose blockquote {
+  margin: 0;
+  padding-left: var(--s-4);
+  border-left: 2px solid var(--signal);
+  color: var(--ink-soft);
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.prose th,
+.prose td {
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose th {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--graphite);
+  font-weight: 500;
+}
+
+/* ---- Utilities -------------------------------------------------------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

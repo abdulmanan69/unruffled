@@ -1,0 +1,44 @@
+---
+import Base from "../layouts/Base.astro";
+import Playground from "../components/Playground.tsx";
+---
+
+<Base
+  title="Playground"
+  path="playground"
+  description="Drive every state of useAction by hand: latency, failure kind, pending thresholds, resource keys, retries and the live region. The diagnostics console reports what you break."
+>
+  <header class="page-head">
+    <p class="label">Playground</p>
+    <h1>Break it on purpose.</h1>
+    <p class="page-lede">
+      Every control changes a real <code>useAction</code> call. The trace, the failure panel and the diagnostics
+      console all read the same machine, so whatever you configure here is what your application would do.
+    </p>
+  </header>
+
+  <Playground client:load />
+</Base>
+
+<style>
+  .page-head {
+    display: grid;
+    gap: var(--s-3);
+    max-width: 68ch;
+    margin-bottom: var(--s-6);
+  }
+
+  .page-lede {
+    color: var(--ink-soft);
+  }
+
+  .page-lede code {
+    padding: 0.1em 0.35em;
+    background: var(--paper-sunk);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+    color: var(--ink);
+  }
+</style>

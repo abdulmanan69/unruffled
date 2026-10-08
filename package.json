@@ -32,10 +32,11 @@
     "attw": "pnpm -r --filter \"./packages/*\" exec attw --pack . --profile esm-only",
     "docs:dev": "pnpm --filter @unruffled/docs dev",
     "docs:build": "pnpm --filter @unruffled/docs build",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm publint && pnpm attw && pnpm size",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm publint && pnpm attw && pnpm size && pnpm docs:check && pnpm docs:build",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && changeset publish",
+    "docs:check": "pnpm --filter @unruffled/docs check"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

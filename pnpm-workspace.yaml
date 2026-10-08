@@ -3,10 +3,17 @@ packages:
   - "apps/*"
   - "examples/*"
 
-# Keep the dependency graph honest: no silent hoisting, so a package that uses
-# something it did not declare fails here rather than in a consumer install.
+# Keep the dependency graph honest: no silent hoisting, so a package that uses something it
+# did not declare fails here rather than in a consumer install.
 shamefullyHoist: false
 autoInstallPeers: true
 strictPeerDependencies: false
 dedupePeerDependents: true
 resolutionMode: highest
+
+# pnpm refuses postinstall scripts by default, which is the right default for a repository
+# that installs on contributor machines and in CI. Exceptions are named here so the list is
+# reviewable in a diff rather than globally switched off.
+#   esbuild - fetches the platform-native binary it cannot ship for every target.
+allowBuilds:
+  esbuild: true

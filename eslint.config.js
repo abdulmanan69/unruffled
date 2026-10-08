@@ -5,7 +5,17 @@ import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default defineConfig([
-  globalIgnores(["**/dist/**", "**/node_modules/**", "**/.astro/**", "**/coverage/**"]),
+  globalIgnores([
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/.astro/**",
+    "**/coverage/**",
+    // The documentation site is type-checked by `astro check`, which understands
+    // .astro files and Astro globals. Pointing the library config at it too would
+    // mean a second tsconfig project for no additional coverage.
+    "apps/**",
+    "examples/**",
+  ]),
 
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,

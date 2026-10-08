@@ -1,0 +1,406 @@
+---
+/**
+ * Home.
+ *
+ * The hero is the timing trace, not a headline over a gradient. The argument this library
+ * makes is a timing argument, and the fastest way to make it is to let someone press a
+ * button and watch the milliseconds.
+ *
+ * The comparison below it is the same trace twice at 90ms latency: once hand-rolled, once
+ * through the library. At that speed the hand-rolled version flashes and the library shows
+ * nothing at all, which is the entire point rendered as a picture.
+ */
+import Base from "../layouts/Base.astro";
+import TimingTrace from "../components/TimingTrace.tsx";
+import { href, SITE } from "../lib/site";
+
+const evidence = [
+  { figure: "0 of 61", label: "shadcn/ui registry components using aria-live" },
+  { figure: "0 of 61", label: "using useActionState, useTransition or isPending" },
+  { figure: "0 of 316", label: "doc pages mentioning useOptimistic" },
+  { figure: "4 of 111", label: "Aceternity UI components handling reduced motion" },
+];
+
+const notBuilding = [
+  "Buttons, cards, inputs, badges, avatars",
+  "Dialogs, drawers, sheets",
+  "Toast renderers",
+  "Command palettes",
+  "Date pickers and calendars",
+  "Data tables and grids",
+  "Skeleton shapes and spinners",
+  "Icon packs and theme kits",
+];
+
+const consoleSample = `[unruffled UX1001] Destructive action has neither a confirmation nor an undo path
+
+An irreversible action can be triggered by a single mis-click or a stray Enter
+on a focused control, and the user has no way back.
+
+Fix: Either wrap the action in useConfirm, or give it an undo window with
+useUndoable. One of the two is required when destructive is true.
+Site: DeleteCustomerButton (src/customers/DeleteCustomerButton.tsx:24:18)
+Docs: ${SITE.origin}/unruffled/diagnostics/ux1001/
+Suppress: diagnostics.suppress("UX1001")`;
+---
+
+<Base title="Overview" path="" sidebar={false}>
+  <section class="hero">
+    <div class="shell hero__inner">
+      <p class="label">A headless layer for async UX</p>
+
+      <h1 class="hero__title">
+        The eleven seconds<br /> after the click.
+      </h1>
+
+      <p class="hero__lede">
+        Your component library ships the button. <strong>unruffled</strong> ships everything that happens next:
+        the duplicate-click guard, the spinner that does not flash, the failure that knows whether it can be retried,
+        and the announcement a screen-reader user actually hears.
+      </p>
+
+      <div class="hero__figure panel">
+        <div class="hero__figure-head">
+          <p class="label">Live · 700&thinsp;ms request</p>
+          <p class="hero__figure-note">Press it. Watch where the thresholds fall.</p>
+        </div>
+        <TimingTrace client:load latencyMs={700} windowMs={1200} />
+      </div>
+
+      <div class="hero__cta">
+        <a class="btn btn--primary" href={href("getting-started")}>Get started</a>
+        <a class="btn" href={href("playground")}>Open the playground</a>
+        <code class="hero__install">pnpm add @unruffled/react</code>
+      </div>
+
+      <p class="hero__meta">
+        <span>7.08&thinsp;kB brotli, installed</span>
+        <span aria-hidden="true">·</span>
+        <span>Zero dependencies</span>
+        <span aria-hidden="true">·</span>
+        <span>Zero CSS</span>
+        <span aria-hidden="true">·</span>
+        <span>MIT</span>
+      </p>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <section class="shell band">
+    <div class="band__head">
+      <p class="label">The same request, twice</p>
+      <h2>A 90&thinsp;ms save should not flash a spinner.</h2>
+      <p class="band__lede">
+        Both buttons below call the same 90&thinsp;millisecond request. The first flips a boolean, which is
+        what a hand-rolled version does. The second applies a 150&thinsp;ms delay before showing anything.
+      </p>
+    </div>
+
+    <div class="compare">
+      <div class="compare__item panel">
+        <p class="label label--fault">Hand-rolled · setState(true)</p>
+        <TimingTrace client:visible latencyMs={90} windowMs={700} naive={true} buttonLabel="Save" />
+        <p class="compare__note">
+          The affordance appears and disappears inside 90&thinsp;ms. The user reads a glitch, not feedback.
+        </p>
+      </div>
+
+      <div class="compare__item panel">
+        <p class="label label--settled">unruffled · delay 150&thinsp;ms</p>
+        <TimingTrace client:visible latencyMs={90} windowMs={700} buttonLabel="Save" />
+        <p class="compare__note">
+          Nothing is shown, because nothing needed to be. The request finished before the threshold.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule" />
+
+  <section class="shell band">
+    <div class="band__head">
+      <p class="label">Why this exists</p>
+      <h2>The gap is measurable, so we measured it.</h2>
+      <p class="band__lede">
+        Before writing any code, fifteen agents surveyed the React component-library ecosystem: shadcn/ui,
+        Radix, MUI, Chakra, Mantine, Headless UI, Ark UI, React Aria, Motion, Vaul, Sonner, cmdk, driver.js
+        and TanStack Query. These are counts from their shipped source, not impressions.
+      </p>
+    </div>
+
+    <dl class="evidence">
+      {
+        evidence.map((item) => (
+          <div class="evidence__item">
+            <dt class="evidence__figure">{item.figure}</dt>
+            <dd class="evidence__label">{item.label}</dd>
+          </div>
+        ))
+      }
+    </dl>
+
+    <p class="band__after">
+      Static presentation is solved. Overlay accessibility is solved. Toasts, palettes and date pickers are
+      solved several times over. What is not solved is the lifecycle of an action, and that is the only thing
+      this library does.
+    </p>
+  </section>
+
+  <hr class="rule" />
+
+  <section class="shell band">
+    <div class="band__head">
+      <p class="label">The part you cannot lint your way to</p>
+      <h2>It tells you which call sites are still wrong.</h2>
+      <p class="band__lede">
+        Every machine emits a transition stream, and a development-only bus reads it. Nine stable codes, each
+        firing when the wiring is wrong rather than when a feature is merely switched on.
+      </p>
+    </div>
+
+    <pre class="console" aria-label="Example console output"><code>{consoleSample}</code></pre>
+
+    <p class="band__after">
+      Production builds contain none of it. The rule table lives on its own subpath, so the strings are not
+      merely dead code behind a flag — they are not in the module graph at all.
+      <a href={href("diagnostics")}>See all nine rules</a>.
+    </p>
+  </section>
+
+  <hr class="rule" />
+
+  <section class="shell band band--last">
+    <div class="band__head">
+      <p class="label">Scope</p>
+      <h2>unruffled renders nothing.</h2>
+      <p class="band__lede">
+        No CSS, no widgets, no design system, ever. It emits values, <code>data-*</code> attributes and props you
+        spread onto your own markup, so it composes over whatever you already use. The list below is what it will
+        never build, because those tiers are solved and defended by ten to a hundred times the distribution.
+      </p>
+    </div>
+
+    <ul class="declined">
+      {notBuilding.map((item) => <li>{item}</li>)}
+    </ul>
+  </section>
+</Base>
+
+<style>
+  /* ---- Hero -------------------------------------------------------------- */
+
+  .hero {
+    padding-block: var(--s-9) var(--s-8);
+  }
+
+  .hero__inner {
+    display: grid;
+    gap: var(--s-5);
+  }
+
+  .hero__title {
+    font-size: var(--text-4xl);
+    font-weight: 500;
+    max-width: 24ch;
+  }
+
+  .hero__lede {
+    max-width: 62ch;
+    font-size: var(--text-md);
+    color: var(--ink-soft);
+  }
+
+  .hero__lede strong {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .hero__figure {
+    margin-top: var(--s-3);
+    padding: var(--s-5);
+    display: grid;
+    gap: var(--s-5);
+  }
+
+  .hero__figure-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-3);
+  }
+
+  .hero__figure-note {
+    font-size: var(--text-sm);
+    color: var(--graphite);
+  }
+
+  .hero__cta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-3);
+    margin-top: var(--s-2);
+  }
+
+  .hero__cta .btn {
+    text-decoration: none;
+  }
+
+  .hero__install {
+    padding: var(--s-2) var(--s-3);
+    background: var(--paper-sunk);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    color: var(--ink-soft);
+  }
+
+  .hero__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--graphite);
+  }
+
+  /* ---- Bands ------------------------------------------------------------- */
+
+  .band {
+    padding-block: var(--s-8);
+    display: grid;
+    gap: var(--s-6);
+  }
+
+  .band--last {
+    padding-bottom: var(--s-9);
+  }
+
+  .band__head {
+    display: grid;
+    gap: var(--s-3);
+    max-width: 68ch;
+  }
+
+  .band__lede {
+    color: var(--ink-soft);
+  }
+
+  .band__after {
+    max-width: 68ch;
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+
+  /* ---- Comparison -------------------------------------------------------- */
+
+  .compare {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+    gap: var(--s-5);
+  }
+
+  .compare__item {
+    padding: var(--s-5);
+    display: grid;
+    gap: var(--s-4);
+    align-content: start;
+  }
+
+  .compare__note {
+    font-size: var(--text-sm);
+    color: var(--graphite);
+  }
+
+  /* ---- Evidence ---------------------------------------------------------- */
+
+  /*
+   * Figure above label, hairline between. Not numbered: these are four independent counts,
+   * not a sequence, and numbering them would imply an order they do not have.
+   */
+  .evidence {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+    gap: 0;
+    margin: 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .evidence__item {
+    padding: var(--s-4) var(--s-4) var(--s-5) 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .evidence__figure {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--tracking-display);
+    color: var(--fault);
+  }
+
+  .evidence__label {
+    margin: var(--s-1) 0 0;
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+    max-width: 26ch;
+  }
+
+  /* ---- Console ----------------------------------------------------------- */
+
+  .console {
+    margin: 0;
+    padding: var(--s-5);
+    overflow-x: auto;
+    background: var(--paper-sunk);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--fault);
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+
+  /* ---- Declined ---------------------------------------------------------- */
+
+  .declined {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    gap: var(--s-2) var(--s-5);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--graphite);
+  }
+
+  .declined li {
+    padding-left: var(--s-4);
+    position: relative;
+  }
+
+  /* A strike rather than a bullet: these are things that are deliberately not here. */
+  .declined li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.75em;
+    width: 0.625rem;
+    height: 1px;
+    background: var(--rule-strong);
+  }
+
+  @media (max-width: 40rem) {
+    .hero {
+      padding-block: var(--s-7) var(--s-6);
+    }
+    .hero__figure {
+      padding: var(--s-4);
+    }
+    .hero__install {
+      width: 100%;
+    }
+  }
+</style>

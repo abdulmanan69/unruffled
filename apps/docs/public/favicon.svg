@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="unruffled">
+  <title>unruffled</title>
+  <!--
+    The mark is the timing trace reduced to one glyph: a hatched gap where work has started
+    but nothing is shown yet, then a solid bar where the affordance is up.
+  -->
+  <defs>
+    <pattern id="hatch" width="4" height="4" patternTransform="rotate(135)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="4" stroke="#9aa0a8" stroke-width="1" />
+    </pattern>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#15161a" />
+  <rect x="5" y="13" width="8" height="6" rx="1.5" fill="url(#hatch)" />
+  <rect x="14" y="13" width="13" height="6" rx="1.5" fill="#5b9bff" />
+</svg>

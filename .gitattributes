@@ -1,0 +1,12 @@
+# Normalise line endings so a Windows contributor and a CI runner produce identical diffs.
+* text=auto eol=lf
+
+# Lockfiles and snapshots must never be rewritten by a filter.
+pnpm-lock.yaml -text
+*.snap -text
+
+# Binary
+*.png binary
+*.jpg binary
+*.woff2 binary
+*.ico binary

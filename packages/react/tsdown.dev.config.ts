@@ -7,6 +7,7 @@ export default defineConfig({
     index: "src/index.ts",
     action: "src/action.ts",
     failure: "src/failure.ts",
+    undoable: "src/undoable.ts",
     announce: "src/announce.tsx",
   },
   format: ["esm"],

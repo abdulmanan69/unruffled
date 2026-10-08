@@ -88,6 +88,25 @@ export {
   type NormalizeOptions,
 } from "./shared/normalizeError.js";
 
+export { createUndoableMachine } from "./machines/undoable/machine.js";
+export {
+  connectUndoable,
+  type UndoableApi,
+  type UndoableAttrs,
+  type UndoableStatus,
+} from "./machines/undoable/connect.js";
+export {
+  COMMITTED_RESET_MS,
+  DEFAULT_FLUSH_ON,
+  DEFAULT_UNDO_WINDOW_MS,
+  type FlushTrigger,
+  type UndoableAnnouncements,
+  type UndoableContext,
+  type UndoableEvent,
+  type UndoableProps,
+  type UndoableStateValue,
+} from "./machines/undoable/types.js";
+
 export { createActionMachine } from "./machines/action/machine.js";
 export {
   connectAction,

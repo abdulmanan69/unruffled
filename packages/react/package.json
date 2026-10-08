@@ -40,6 +40,11 @@
       "development": "./dist/failure.development.js",
       "default": "./dist/failure.js"
     },
+    "./undoable": {
+      "types": "./dist/undoable.d.ts",
+      "development": "./dist/undoable.development.js",
+      "default": "./dist/undoable.js"
+    },
     "./announce": {
       "types": "./dist/announce.d.ts",
       "development": "./dist/announce.development.js",
@@ -54,8 +59,7 @@
     "LICENSE"
   ],
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "engines": {
     "node": ">=20.19"
@@ -75,7 +79,7 @@
     {
       "name": "@unruffled/react + core, full barrel",
       "path": "dist/index.js",
-      "limit": "7.5 kB",
+      "limit": "9.5 kB",
       "ignore": [
         "react"
       ]
@@ -101,6 +105,23 @@
       "name": "Announcer, react layer only",
       "path": "dist/announce.js",
       "limit": "1.5 kB",
+      "ignore": [
+        "react",
+        "@unruffled/core"
+      ]
+    },
+    {
+      "name": "useUndoable + core",
+      "path": "dist/undoable.js",
+      "limit": "8 kB",
+      "ignore": [
+        "react"
+      ]
+    },
+    {
+      "name": "useUndoable, react layer only",
+      "path": "dist/undoable.js",
+      "limit": "2.5 kB",
       "ignore": [
         "react",
         "@unruffled/core"

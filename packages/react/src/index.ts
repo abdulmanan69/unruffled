@@ -20,6 +20,13 @@ export {
 } from "./action.js";
 
 export { useFailure, type FailureApi, type UseFailureOptions } from "./failure.js";
+export {
+  useUndoable,
+  type UndoProps,
+  type UndoPropOverrides,
+  type UseUndoableOptions,
+  type UseUndoableResult,
+} from "./undoable.js";
 
 export { Announcer, useAnnounce, type AnnouncerProps, type UseAnnounceResult } from "./announce.js";
 
@@ -62,4 +69,7 @@ export type {
   Politeness,
   Ports,
   RetryPolicy,
+  UndoableApi,
+  UndoableProps,
+  UndoableStatus,
 } from "@unruffled/core";

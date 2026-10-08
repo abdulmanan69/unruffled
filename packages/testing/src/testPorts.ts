@@ -92,6 +92,13 @@ export interface ScriptedNavigation extends NavigationPort {
   readonly beacons: readonly { url: string; body: string }[];
   /** When false, `beacon` reports failure so the synchronous fallback path is exercised. */
   beaconAvailable: boolean;
+  /**
+   * When false, `flushable` reports that `onLeave` cannot fire.
+   *
+   * This is how rule UX1007 is exercised without having to supply a crippled port: the
+   * scripted handlers still work, so a test can assert the warning and the flush separately.
+   */
+  flushAvailable: boolean;
 }
 
 export function createScriptedNavigation(): ScriptedNavigation {
@@ -102,6 +109,7 @@ export function createScriptedNavigation(): ScriptedNavigation {
   }>();
   const beacons: { url: string; body: string }[] = [];
   let beaconAvailable = true;
+  let flushAvailable = true;
 
   return {
     get beaconAvailable() {
@@ -109,6 +117,12 @@ export function createScriptedNavigation(): ScriptedNavigation {
     },
     set beaconAvailable(next: boolean) {
       beaconAvailable = next;
+    },
+    get flushAvailable() {
+      return flushAvailable;
+    },
+    set flushAvailable(next: boolean) {
+      flushAvailable = next;
     },
     beacons,
 
@@ -118,6 +132,8 @@ export function createScriptedNavigation(): ScriptedNavigation {
         leaveHandlers.delete(handler);
       };
     },
+
+    flushable: () => flushAvailable,
 
     block(shouldBlock, onBlocked) {
       const entry = { shouldBlock, onBlocked };

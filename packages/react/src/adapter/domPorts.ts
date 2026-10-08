@@ -161,6 +161,10 @@ export function createDomPorts(options: DomPortOptions = {}): Ports {
         };
       },
 
+      // Real listeners on real events, so a window held by an undoable is genuinely flushed
+      // on the way out and UX1007 stays quiet.
+      flushable: () => true,
+
       /**
        * Covers the browser-level exit only.
        *

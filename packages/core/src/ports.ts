@@ -74,6 +74,16 @@ export interface NavigationPort {
   /** Fires when the document or the route is about to go away. */
   readonly onLeave: (handler: (reason: LeaveReason) => void) => Disposer;
   /**
+   * Whether {@link NavigationPort.onLeave} can actually fire.
+   *
+   * Reported rather than inferred, because subscribing proves nothing: the fallback
+   * implementation below returns a working disposer and never calls the handler. A machine
+   * holding a deferred write needs to know the difference between "the flush is wired" and
+   * "the flush is a no-op and this write dies on navigation", and rule UX1007 reads exactly
+   * this.
+   */
+  readonly flushable: () => boolean;
+  /**
    * Asks the host to intercept an attempted exit while `shouldBlock` returns true.
    *
    * Router-agnostic: the React adapter adds `beforeunload`, and a router binding adds
@@ -250,7 +260,9 @@ export function defaultPorts(): Ports {
       idle: (fn) => clock.after(0, fn),
     },
     storage: { get: () => null, set: noop, remove: noop },
-    navigation: { onLeave: () => noop, block: () => noop, beacon: () => false },
+    // Inert, and honest about it: `flushable` reports false so a deferred write warns rather
+    // than silently depending on a handler that is never called.
+    navigation: { onLeave: () => noop, flushable: () => false, block: () => noop, beacon: () => false },
     doc: { activeElement: () => null, listen: () => noop, isHidden: () => false },
     // Not live by default: the React adapter swaps this in only once <Announcer /> mounts,
     // which is precisely the condition UX1003 reports on.

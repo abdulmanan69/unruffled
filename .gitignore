@@ -1,0 +1,37 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+.astro/
+*.tsbuildinfo
+
+# test / coverage
+coverage/
+.vitest-cache/
+playwright-report/
+test-results/
+
+# env
+.env
+.env.*
+!.env.example
+
+# editor / os
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# misc
+.turbo/
+.cache/
+.size-limit.json

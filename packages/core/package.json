@@ -1,0 +1,90 @@
+{
+  "name": "@unruffled/core",
+  "version": "0.1.0",
+  "description": "Framework-agnostic state machines for the async half of your UI: guard, pending, confirm, undo, partial failure, retry. Zero dependencies, zero DOM access.",
+  "license": "MIT",
+  "author": "Abdul Manan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdulmanan69/ui-ux.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://abdulmanan69.github.io/ui-ux/",
+  "bugs": "https://github.com/abdulmanan69/ui-ux/issues",
+  "keywords": [
+    "unruffled",
+    "ux",
+    "state-machine",
+    "async",
+    "undo",
+    "optimistic",
+    "headless",
+    "accessibility",
+    "aria-live"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./dist/index.development.js",
+      "default": "./dist/index.js"
+    },
+    "./machine": {
+      "types": "./dist/machine.d.ts",
+      "development": "./dist/machine.development.js",
+      "default": "./dist/machine.js"
+    },
+    "./ports": {
+      "types": "./dist/ports.d.ts",
+      "development": "./dist/ports.development.js",
+      "default": "./dist/ports.js"
+    },
+    "./diagnostics": {
+      "types": "./dist/diagnostics.d.ts",
+      "development": "./dist/diagnostics.development.js",
+      "default": "./dist/diagnostics.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "tsdown && tsdown -c tsdown.dev.config.ts",
+    "dev": "tsdown -c tsdown.dev.config.ts --watch",
+    "size": "size-limit"
+  },
+  "size-limit": [
+    {
+      "name": "@unruffled/core barrel (all exports retained)",
+      "path": "dist/index.js",
+      "limit": "5.1 kB"
+    },
+    {
+      "name": "machine runtime only",
+      "path": "dist/machine.js",
+      "limit": "1.5 kB"
+    },
+    {
+      "name": "ports only",
+      "path": "dist/ports.js",
+      "limit": "1 kB"
+    },
+    {
+      "name": "diagnostics (dev-only subpath)",
+      "path": "dist/diagnostics.js",
+      "limit": "2.5 kB"
+    }
+  ]
+}

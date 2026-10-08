@@ -1,0 +1,73 @@
+{
+  "name": "@unruffled/testing",
+  "version": "0.1.0",
+  "description": "Deterministic test utilities for unruffled: a fake clock so timed behaviour never flakes, a Chaos harness that forces any region into any failure state, and matchers that assert exactly one announcement reached the live region.",
+  "license": "MIT",
+  "author": "Abdul Manan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdulmanan69/ui-ux.git",
+    "directory": "packages/testing"
+  },
+  "homepage": "https://abdulmanan69.github.io/ui-ux/",
+  "bugs": "https://github.com/abdulmanan69/ui-ux/issues",
+  "keywords": [
+    "unruffled",
+    "ux",
+    "testing",
+    "vitest",
+    "testing-library",
+    "fake-timers",
+    "accessibility-testing"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./dist/index.development.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "@unruffled/core": "workspace:^"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "build": "tsdown && tsdown -c tsdown.dev.config.ts",
+    "dev": "tsdown -c tsdown.dev.config.ts --watch",
+    "size": "size-limit"
+  },
+  "size-limit": [
+    {
+      "name": "@unruffled/testing",
+      "path": "dist/index.js",
+      "limit": "4 kB",
+      "ignore": [
+        "react",
+        "@unruffled/core"
+      ]
+    }
+  ]
+}

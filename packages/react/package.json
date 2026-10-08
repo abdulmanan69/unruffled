@@ -1,0 +1,97 @@
+{
+  "name": "@unruffled/react",
+  "version": "0.1.0",
+  "description": "React hooks and prop-getters for unruffled. Declare an action once - pending policy, guard, error taxonomy, undo window, focus policy and screen-reader announcements come with it.",
+  "license": "MIT",
+  "author": "Abdul Manan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdulmanan69/ui-ux.git",
+    "directory": "packages/react"
+  },
+  "homepage": "https://abdulmanan69.github.io/ui-ux/",
+  "bugs": "https://github.com/abdulmanan69/ui-ux/issues",
+  "keywords": [
+    "unruffled",
+    "ux",
+    "react",
+    "hooks",
+    "async-button",
+    "loading-state",
+    "undo",
+    "confirm",
+    "accessibility"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./dist/index.development.js",
+      "default": "./dist/index.js"
+    },
+    "./action": {
+      "types": "./dist/action.d.ts",
+      "development": "./dist/action.development.js",
+      "default": "./dist/action.js"
+    },
+    "./failure": {
+      "types": "./dist/failure.d.ts",
+      "development": "./dist/failure.development.js",
+      "default": "./dist/failure.js"
+    },
+    "./announce": {
+      "types": "./dist/announce.d.ts",
+      "development": "./dist/announce.development.js",
+      "default": "./dist/announce.js"
+    },
+    "./r19": {
+      "types": "./dist/r19.d.ts",
+      "development": "./dist/r19.development.js",
+      "default": "./dist/r19.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "@unruffled/core": "workspace:^"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "scripts": {
+    "build": "tsdown && tsdown -c tsdown.dev.config.ts",
+    "dev": "tsdown -c tsdown.dev.config.ts --watch",
+    "size": "size-limit"
+  },
+  "size-limit": [
+    {
+      "name": "@unruffled/react (full barrel)",
+      "path": "dist/index.js",
+      "limit": "7.5 kB",
+      "ignore": [
+        "react"
+      ]
+    },
+    {
+      "name": "useAction only",
+      "path": "dist/action.js",
+      "limit": "3.5 kB",
+      "ignore": [
+        "react"
+      ]
+    }
+  ]
+}

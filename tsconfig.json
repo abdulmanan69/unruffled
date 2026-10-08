@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": false,
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@unruffled/core": ["./packages/core/src/index.ts"],
+      "@unruffled/core/*": ["./packages/core/src/*"],
+      "@unruffled/react": ["./packages/react/src/index.ts"],
+      "@unruffled/react/*": ["./packages/react/src/*"],
+      "@unruffled/query": ["./packages/query/src/index.ts"],
+      "@unruffled/form": ["./packages/form/src/index.ts"],
+      "@unruffled/devtools": ["./packages/devtools/src/index.ts"],
+      "@unruffled/testing": ["./packages/testing/src/index.ts"],
+      "@unruffled/intl": ["./packages/intl/src/index.ts"],
+      "@unruffled/intl/*": ["./packages/intl/src/*"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*",
+    "packages/*/test/**/*",
+    "packages/*/tsdown.config.ts",
+    "packages/*/tsdown.dev.config.ts",
+    "tests/**/*",
+    "vitest.config.ts"
+  ],
+  "exclude": ["**/dist/**", "**/node_modules/**", "apps/**", "examples/**"]
+}

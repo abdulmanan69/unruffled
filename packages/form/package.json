@@ -1,0 +1,72 @@
+{
+  "name": "@unruffled/form",
+  "version": "0.1.0",
+  "description": "Maps server validation failures onto form fields: RFC 9457 problem+json normalization, unknown paths routed to a form-level summary, and server errors that clear when the field is edited.",
+  "license": "MIT",
+  "author": "Abdul Manan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdulmanan69/ui-ux.git",
+    "directory": "packages/form"
+  },
+  "homepage": "https://abdulmanan69.github.io/ui-ux/",
+  "bugs": "https://github.com/abdulmanan69/ui-ux/issues",
+  "keywords": [
+    "unruffled",
+    "ux",
+    "react-hook-form",
+    "validation",
+    "problem-json",
+    "rfc9457",
+    "server-errors"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./dist/index.development.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "@unruffled/core": "workspace:^",
+    "@unruffled/react": "workspace:^"
+  },
+  "peerDependencies": {
+    "react-hook-form": "^7.0.0",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "scripts": {
+    "build": "tsdown && tsdown -c tsdown.dev.config.ts",
+    "dev": "tsdown -c tsdown.dev.config.ts --watch",
+    "size": "size-limit"
+  },
+  "size-limit": [
+    {
+      "name": "@unruffled/form",
+      "path": "dist/index.js",
+      "limit": "1.5 kB",
+      "ignore": [
+        "react",
+        "react-hook-form",
+        "@unruffled/core",
+        "@unruffled/react"
+      ]
+    }
+  ]
+}

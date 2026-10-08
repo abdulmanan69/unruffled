@@ -1,0 +1,5 @@
+dist
+coverage
+.astro
+pnpm-lock.yaml
+CHANGELOG.md

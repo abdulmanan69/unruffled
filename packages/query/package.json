@@ -1,0 +1,72 @@
+{
+  "name": "@unruffled/query",
+  "version": "0.1.0",
+  "description": "TanStack Query bindings for unruffled: an abortable mutation transport, optimistic snapshot and rollback, and an undo bridge that can actually cancel a write before it is sent.",
+  "license": "MIT",
+  "author": "Abdul Manan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdulmanan69/ui-ux.git",
+    "directory": "packages/query"
+  },
+  "homepage": "https://abdulmanan69.github.io/ui-ux/",
+  "bugs": "https://github.com/abdulmanan69/ui-ux/issues",
+  "keywords": [
+    "unruffled",
+    "ux",
+    "tanstack-query",
+    "react-query",
+    "optimistic",
+    "undo",
+    "mutation"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./dist/index.development.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "@unruffled/core": "workspace:^",
+    "@unruffled/react": "workspace:^"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "scripts": {
+    "build": "tsdown && tsdown -c tsdown.dev.config.ts",
+    "dev": "tsdown -c tsdown.dev.config.ts --watch",
+    "size": "size-limit"
+  },
+  "size-limit": [
+    {
+      "name": "@unruffled/query",
+      "path": "dist/index.js",
+      "limit": "1.5 kB",
+      "ignore": [
+        "react",
+        "@tanstack/react-query",
+        "@unruffled/core",
+        "@unruffled/react"
+      ]
+    }
+  ]
+}

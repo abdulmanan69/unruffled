@@ -1,0 +1,12 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+  - "examples/*"
+
+# Keep the dependency graph honest: no silent hoisting, so a package that uses
+# something it did not declare fails here rather than in a consumer install.
+shamefullyHoist: false
+autoInstallPeers: true
+strictPeerDependencies: false
+dedupePeerDependents: true
+resolutionMode: highest

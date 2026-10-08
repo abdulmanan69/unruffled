@@ -44,7 +44,7 @@ export interface DiagnosticRule {
   readonly docs: string;
 }
 
-const DOCS_BASE = "https://abdulmanan69.github.io/ui-ux/diagnostics";
+const DOCS_BASE = "https://abdulmanan69.github.io/unruffled/diagnostics";
 
 const rule = (
   code: DiagnosticCode,

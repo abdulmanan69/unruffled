@@ -6,11 +6,11 @@
   "author": "Abdul Manan",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/abdulmanan69/ui-ux.git",
+    "url": "git+https://github.com/abdulmanan69/unruffled.git",
     "directory": "packages/react"
   },
-  "homepage": "https://abdulmanan69.github.io/ui-ux/",
-  "bugs": "https://github.com/abdulmanan69/ui-ux/issues",
+  "homepage": "https://abdulmanan69.github.io/unruffled/",
+  "bugs": "https://github.com/abdulmanan69/unruffled/issues",
   "keywords": [
     "unruffled",
     "ux",
@@ -45,11 +45,6 @@
       "development": "./dist/announce.development.js",
       "default": "./dist/announce.js"
     },
-    "./r19": {
-      "types": "./dist/r19.d.ts",
-      "development": "./dist/r19.development.js",
-      "default": "./dist/r19.js"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -78,7 +73,7 @@
   },
   "size-limit": [
     {
-      "name": "@unruffled/react (full barrel)",
+      "name": "@unruffled/react + core, full barrel",
       "path": "dist/index.js",
       "limit": "7.5 kB",
       "ignore": [
@@ -86,11 +81,29 @@
       ]
     },
     {
-      "name": "useAction only",
+      "name": "useAction + core",
       "path": "dist/action.js",
-      "limit": "3.5 kB",
+      "limit": "6.6 kB",
       "ignore": [
         "react"
+      ]
+    },
+    {
+      "name": "useAction, react layer only",
+      "path": "dist/action.js",
+      "limit": "2.5 kB",
+      "ignore": [
+        "react",
+        "@unruffled/core"
+      ]
+    },
+    {
+      "name": "Announcer, react layer only",
+      "path": "dist/announce.js",
+      "limit": "1.5 kB",
+      "ignore": [
+        "react",
+        "@unruffled/core"
       ]
     }
   ]

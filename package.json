@@ -7,10 +7,10 @@
   "author": "Abdul Manan",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/abdulmanan69/ui-ux.git"
+    "url": "git+https://github.com/abdulmanan69/unruffled.git"
   },
-  "homepage": "https://abdulmanan69.github.io/ui-ux/",
-  "bugs": "https://github.com/abdulmanan69/ui-ux/issues",
+  "homepage": "https://abdulmanan69.github.io/unruffled/",
+  "bugs": "https://github.com/abdulmanan69/unruffled/issues",
   "type": "module",
   "packageManager": "pnpm@12.3.4",
   "engines": {

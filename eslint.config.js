@@ -73,7 +73,8 @@ export default defineConfig([
     files: [
       "packages/devtools/src/**/*.ts",
       "packages/core/src/diagnostics/**/*.ts",
-      "packages/react/src/adapter/domPorts.ts",
+      // The adapter directory is where DOM access belongs; that is the point of the layer.
+      "packages/react/src/adapter/**/*.{ts,tsx}",
       "packages/testing/src/**/*.{ts,tsx}",
     ],
     rules: { "no-console": "off", "no-restricted-globals": "off" },

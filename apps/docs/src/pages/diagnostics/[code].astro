@@ -35,15 +35,23 @@ diagnostics.suppress("${code}");`;
 /**
  * Be precise about what actually reports each rule today.
  *
- * Only UX1001 to UX1004 have report sites in the shipped action machine. The rest describe
- * defects the library has named but cannot yet observe, because the primitive that would
- * detect them is not in 0.1.0. Saying otherwise would make the documentation claim a
- * diagnostic that never fires.
+ * UX1001 to UX1004 have report sites in the action machine, and UX1007 has one in the
+ * undoable machine. The rest describe defects the library has named but cannot yet observe,
+ * because the primitive that would detect them is not in 0.1.0. Saying otherwise would make
+ * the documentation claim a diagnostic that never fires.
  */
-const REPORTED_TODAY = new Set(["UX1001", "UX1002", "UX1003", "UX1004"]);
+const REPORTED_TODAY: Partial<Record<DiagnosticCode, string>> = {
+  UX1001: "action",
+  UX1002: "action",
+  UX1003: "action",
+  UX1004: "action",
+  UX1007: "undoable",
+};
 
-const detection = REPORTED_TODAY.has(code)
-  ? "The diagnostics bus reports this at runtime, from the action machine, in development builds. It is reported once per code per call site, so a rule inside a list row does not bury the console."
+const reportingMachine = REPORTED_TODAY[code];
+
+const detection = reportingMachine
+  ? `The diagnostics bus reports this at runtime, from the ${reportingMachine} machine, in development builds. It is reported once per code per call site, so a rule inside a list row does not bury the console.`
   : rule.static
     ? "This condition is decidable from source, so it is a candidate for a lint rule rather than a runtime check. Nothing reports it yet: the primitive it describes is not part of 0.1.0, and the lint plugin is not written. The rule is published so the code is stable before anything emits it."
     : "Nothing reports this yet. It describes a defect in a primitive that is not part of 0.1.0, and the rule is published so the code is stable before anything emits it.";

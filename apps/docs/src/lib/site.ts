@@ -86,6 +86,7 @@ export const NAV: readonly NavSection[] = [
     title: "Primitives",
     links: [
       { label: "useAction", path: "components/use-action", hint: "The action lifecycle" },
+      { label: "useUndoable", path: "components/use-undoable", hint: "The deferred write" },
       { label: "useFailure", path: "components/use-failure", hint: "Failure taxonomy" },
       { label: "Announcer", path: "components/announcer", hint: "Live regions" },
     ],

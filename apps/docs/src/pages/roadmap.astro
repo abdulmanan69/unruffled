@@ -18,7 +18,7 @@ import { href } from "../lib/site";
   eyebrow="Reference"
   path="roadmap"
   lede="What 0.1.0 actually contains, what is being built next, and the long list of things this library will never build because someone else already built them well."
-  description="unruffled roadmap: the 0.1.0 surface, useConfirm and useUndoable next, the collections group after that, the planned integration packages, what is permanently out of scope, and what semver means for the UX diagnostic codes."
+  description="unruffled roadmap: the 0.1.0 surface, useConfirm next, the collections group after that, the planned integration packages, what is permanently out of scope, and what semver means for the UX diagnostic codes."
   meta={[
     { label: "Current", value: "0.1.0" },
     { label: "Shipped primitives", value: "6" },
@@ -39,6 +39,14 @@ import { href } from "../lib/site";
         two pending thresholds so a fast action never flashes and a shown affordance never flickers, abort on unmount,
         a classified failure, optional automatic retry with an observable backoff state, focus restoration, and
         an announcement.
+      </li>
+      <li>
+        <strong>useUndoable</strong> — the deferred write. The change is applied locally and the request is held
+        for the window, so Undo cancels a call that was never made rather than reversing one that already landed.
+        The write survives navigation and unmount, repeats sharing a tag coalesce into one commit with a count,
+        and <code>altText</code> is required by the type because an undo affordance without an accessible label
+        cannot be reached. Reports <a href={href("diagnostics/ux1007")}>UX1007</a> when the navigation port cannot
+        actually flush.
       </li>
       <li>
         <strong>useFailure</strong> — ten failure kinds from the payload shapes real APIs return, a
@@ -92,11 +100,13 @@ import { href } from "../lib/site";
 
     <Callout tone="warning" title="Five of the nine diagnostics name a fix you cannot apply yet">
       <p>
-        The action machine is the only machine shipped, so only
+        Five rules can fire today:
         <a href={href("diagnostics/ux1001")}>UX1001</a> to
-        <a href={href("diagnostics/ux1004")}>UX1004</a> can currently fire. Of those, UX1001 names
-        <code>useConfirm</code> and <code>useUndoable</code> as its fix and neither exists, so the only way to satisfy
-        it in 0.1.0 is to leave <code>destructive</code> unset. UX1005 to UX1009 are unreachable until the primitives
+        <a href={href("diagnostics/ux1004")}>UX1004</a> from the action machine, and
+        <a href={href("diagnostics/ux1007")}>UX1007</a> from the undoable machine. UX1001 names
+        <code>useConfirm</code> and <code>useUndoable</code> as its fix; the second of those now exists, so a destructive
+        action has a real recovery path rather than only the option of leaving
+        <code>destructive</code> unset. UX1005, UX1006, UX1008 and UX1009 stay unreachable until the primitives
         they name have shipped.
       </p>
       <p>
@@ -108,21 +118,16 @@ import { href } from "../lib/site";
 
   <Section id="next" title="Next">
     <p>
-      Two primitives, in this order, because together they are the recovery path that UX1001 demands and the
-      reason <code>destructive</code> and <code>reversible</code> are already in
-      <code>ActionProps</code>.
+      <code>useUndoable</code> shipped in 0.1.0 and is documented
+      <a href={href("components/use-undoable")}>here</a>. It is half of the recovery path UX1001 demands, and
+      the reason <code>destructive</code> and <code>reversible</code> are already in <code>ActionProps</code>.
+      The other half is next.
     </p>
     <ul>
       <li>
         <strong>useConfirm</strong> — holds an action behind a confirmation step, manages the focus move into and
         back out of the prompt, and sets <code>reversible</code> on the action it wraps. It will drive your dialog
         rather than render one; UX1009 already describes the host component it needs and where it has to be mounted.
-      </li>
-      <li>
-        <strong>useUndoable</strong> — applies the change immediately and defers the write for a stated window,
-        announces that the window is open, rolls back on undo, and flushes the pending write through the navigation
-        port if the user navigates or closes the tab first. UX1007 already describes what happens when that port
-        is missing.
       </li>
     </ul>
   </Section>

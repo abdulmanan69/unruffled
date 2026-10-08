@@ -83,6 +83,12 @@ const primitives = [
     size: "2.07 kB",
   },
   {
+    name: "useUndoable",
+    path: "components/use-undoable",
+    what: "The deferred write. Undo cancels a request that was never sent, instead of apologising for one that already landed.",
+    size: "1.90 kB",
+  },
+  {
     name: "useFailure",
     path: "components/use-failure",
     what: "Ten failure kinds from whatever your API rejected with, and an honest answer to whether a retry can work.",
@@ -270,10 +276,10 @@ const primitives = [
   <section class="shell band">
     <div class="band__head">
       <p class="label">What ships today</p>
-      <h2>Three primitives, and nothing you did not ask for.</h2>
+      <h2>Four primitives, and nothing you did not ask for.</h2>
       <p class="band__lede">
-        Version 0.1.0 is deliberately small. Confirmation flows, undo windows and the collection primitives
-        are designed and on the <a href={href("roadmap")}>roadmap</a>, not half-shipped.
+        Version 0.1.0 is deliberately small. Confirmation flows and the collection primitives are designed and
+        on the <a href={href("roadmap")}>roadmap</a>, not half-shipped.
       </p>
     </div>
 

@@ -1,0 +1,888 @@
+---
+/**
+ * useUndoable reference.
+ *
+ * Every claim here is checked against the source: the five states and their transitions
+ * come from `packages/core/src/machines/undoable/machine.ts`, the option table from
+ * `types.ts`, the result table from `connect.ts` and `packages/react/src/undoable.ts`, the
+ * flush events from `packages/react/src/adapter/domPorts.ts`, and the guaranteed behaviour
+ * from `packages/core/test/undoable.test.ts`.
+ */
+import DocPage from "../../components/docs/DocPage.astro";
+import Section from "../../components/docs/Section.astro";
+import Snippet from "../../components/docs/Snippet.astro";
+import Demo from "../../components/docs/Demo.astro";
+import Callout from "../../components/docs/Callout.astro";
+import PropsTable from "../../components/docs/PropsTable.astro";
+import Keys from "../../components/docs/Keys.astro";
+import Mistake from "../../components/docs/Mistake.astro";
+import { href } from "../../lib/site";
+import { UndoableDemo } from "../../components/demos/index.tsx";
+
+const basicCode = `import { useState } from "react";
+import { useUndoable } from "@unruffled/react";
+
+export function InvoiceList({ invoices }: { invoices: Invoice[] }) {
+  const [rows, setRows] = useState(invoices);
+
+  const deletion = useUndoable<Invoice>({
+    // The write. Not sent until the window closes.
+    commit: (batch) => api.deleteInvoices(batch.map((row) => row.id)),
+    // Puts the local change back. Runs on undo, and only on undo.
+    rollback: (batch) => setRows((current) => [...current, ...batch]),
+    coalesce: "invoice-delete",
+    altText: "Undo delete",
+    announce: { scheduled: "Deleted", committed: "Delete saved" },
+  });
+
+  const remove = (row: Invoice) => {
+    // Optimistic, and local only. No request in this handler.
+    setRows((current) => current.filter((item) => item.id !== row.id));
+    deletion.schedule(row);
+  };
+
+  return (
+    <>
+      <ul>
+        {rows.map((row) => (
+          <li key={row.id}>
+            {row.number}
+            <button type="button" onClick={() => remove(row)}>
+              Delete
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {deletion.canUndo ? (
+        <p role="status">
+          {deletion.count} deleted
+          <button {...deletion.undoProps}>Undo</button>
+        </p>
+      ) : null}
+    </>
+  );
+}`;
+
+const flushOnCode = `// The default. Both exits flush, because a window that does not survive
+// navigation loses the write.
+const deletion = useUndoable<Row>({
+  commit,
+  altText: "Undo delete",
+  flushOn: ["navigate", "pagehide"],
+});
+
+// The opt-out, written down rather than arrived at by accident: a window
+// interrupted by navigation may be lost, and UX1007 stays quiet because the
+// decision was deliberate.
+const draft = useUndoable<Row>({ commit, altText: "Undo", flushOn: [] });`;
+
+const coalesceCode = `// Five deletes in a row are one entry with a count and one restarted window.
+const deletion = useUndoable<Row>({
+  commit: (batch) => api.deleteRows(batch.map((row) => row.id)),
+  coalesce: "row-delete",
+  altText: "Undo delete",
+});
+
+{deletion.canUndo ? (
+  <p role="status">
+    {deletion.count === 1 ? "1 row deleted" : \`\${deletion.count} rows deleted\`}
+    <button {...deletion.undoProps}>Undo</button>
+  </p>
+) : null}`;
+
+const keyCode = `// The key is held for the whole window and the request that follows it, so a
+// save on the same record cannot land in the middle of a deferred delete.
+const deletion = useUndoable<Invoice>({
+  commit: (batch) => api.deleteInvoices(batch.map((row) => row.id)),
+  key: \`invoice:\${id}\`,
+  altText: "Undo delete",
+});
+
+const save = useAction(() => api.saveInvoice(id, form), {
+  key: \`invoice:\${id}\`,
+});`;
+
+const toastCode = `import type { CSSProperties } from "react";
+
+// One timer, and it belongs to the machine. The toast's lifetime is derived
+// from remainingMs, so coalescing a repeat extends both at once.
+{deletion.canUndo ? (
+  <Toast
+    {...deletion.attrs}
+    duration={deletion.remainingMs ?? 0}
+    style={{ "--undo-progress": deletion.progress ?? 0 } as CSSProperties}
+  >
+    {deletion.count} deleted
+    <button {...deletion.undoProps}>Undo</button>
+  </Toast>
+) : null}`;
+
+const progressCode = `/* The ring is interpolated by the compositor from a custom property, so the
+   toast does not re-render once per frame to animate it. */
+
+.undo-ring {
+  stroke-dashoffset: calc(var(--undo-circumference) * var(--undo-progress, 0));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The number keeps counting; only the ring stops. */
+  .undo-ring {
+    display: none;
+  }
+}`;
+
+const failedCode = `// The batch is kept, so a retry sends the same items. flush() is the retry.
+{deletion.state === "failed" ? (
+  <div role="group">
+    <p>{deletion.failure?.message}</p>
+    <button type="button" onClick={deletion.flush}>
+      Try again
+    </button>
+    <button type="button" onClick={deletion.reset}>
+      Dismiss
+    </button>
+  </div>
+) : null}`;
+
+const optionRows = [
+  {
+    name: "commit",
+    type: "(items: readonly T[], signal: AbortSignal) => Promise<unknown>",
+    default: "required",
+    description:
+      "The deferred write. Called once per committed batch, with every item in it. Replaced on every host render, so reading fresh state inside it is safe. It receives an abort signal for symmetry with the rest of the library, and nothing in this machine ever aborts it.",
+    why: "A commit that has been sent is a write the user is owed. Everywhere else in the library disposal aborts the request; here it must not, because the user was already told the change had happened.",
+  },
+  {
+    name: "altText",
+    type: "string",
+    default: "required",
+    description:
+      "Accessible label for the undo affordance. It lands on undoProps as aria-label, and getUndoProps can override it per control.",
+    why: "It is required by the type rather than defaulted because an icon-only Undo is how this pattern normally ships broken: the window exists, the request is correctly deferred, and the one control that cancels it has no name in the accessibility tree. A delete with an unreachable undo is a delete with no undo.",
+  },
+  {
+    name: "rollback",
+    type: "(items: readonly T[]) => void",
+    default: "undefined",
+    description:
+      "Undoes the optimistic local change. Called on undo, inside the transition, before the window closes, and never after a commit has been sent.",
+  },
+  {
+    name: "windowMs",
+    type: "number",
+    default: "6000",
+    description: "Milliseconds the window stays open. A repeat that coalesces restarts it from the merge.",
+    why: "6000 is long enough to read “Deleted” and reach for Undo, and short enough that the interface is not lying for long about a change it has not made yet. Below roughly 3000 the affordance is gone before a user who was reading something else can act on it; past 10000 a queue of pending writes builds up behind a user who keeps working.",
+  },
+  {
+    name: "coalesce",
+    type: "string",
+    default: "undefined",
+    description:
+      "Merge tag for repeats. Schedules sharing a tag append to the open entry and restart its window, as one entry with a count. Without a tag, a second schedule flushes the open entry and queues itself behind it.",
+  },
+  {
+    name: "key",
+    type: "string",
+    default: "undefined",
+    description:
+      "Resource identity, for example invoice:42. Held from the moment the window opens until the commit settles or the entry is undone, so an action writing the same record cannot land in the middle of a deferred delete.",
+  },
+  {
+    name: "registry",
+    type: "KeyRegistry",
+    default: "the process-wide registry",
+    description:
+      "The registry backing key. Replace it to isolate a test, a sandbox or an embedded widget from the rest of the page.",
+  },
+  {
+    name: "flushOn",
+    type: 'readonly ("navigate" | "pagehide")[]',
+    default: '["navigate", "pagehide"]',
+    description:
+      "Which exits commit an open window early. navigate is an in-app route change reported by a router binding; pagehide is the document going away, which the DOM port raises from both pagehide and a visibilitychange to hidden. An empty array is the explicit opt-out and also silences UX1007.",
+    why: "Defaulted to both exits rather than to none, because a window that does not survive navigation loses the write, and that is the failure this machine exists to stop.",
+  },
+  {
+    name: "announce",
+    type: "false | UndoableAnnouncements",
+    default: "undefined",
+    description:
+      "Strings read to assistive technology: scheduled, undone and committed. Each is silent when omitted. A failed commit announces the normalised failure message assertively with no configuration. Setting the option to false opts out of all four.",
+  },
+  {
+    name: "classify",
+    type: "(failure: NormalizedFailure) => FailureKind | undefined",
+    default: "the provider's classify",
+    description:
+      "Overrides failure classification for a failed commit. Returning undefined keeps the default status mapping, so one case can be special-cased without restating the table.",
+  },
+  {
+    name: "messages",
+    type: "Partial<Record<FailureKind, string>>",
+    default: "built-in copy, merged over the provider's",
+    description: "User-facing copy per failure kind, so the taxonomy can be localised.",
+  },
+  {
+    name: "online",
+    type: "() => boolean",
+    default: "navigator.onLine",
+    description:
+      "Whether the client believes it has a network, read when a failed commit is classified so an offline failure is labelled offline rather than reported as a generic server error. Returns true when navigator is undefined, which is the server case.",
+  },
+  {
+    name: "onCommitted",
+    type: "(items: readonly T[]) => void",
+    default: "undefined",
+    description: "Called on entry to committed, with the batch that was sent.",
+  },
+  {
+    name: "onUndone",
+    type: "(items: readonly T[]) => void",
+    default: "undefined",
+    description:
+      "Called in the undo transition, with the batch that was discarded, after rollback has run. Nothing was sent, so there is nothing to reverse here.",
+  },
+  {
+    name: "onCommitFailed",
+    type: "(failure: NormalizedFailure) => void",
+    default: "undefined",
+    description:
+      "Called on entry to failed, with the normalised failure. The items are still on the hook, so a retry sends the same batch.",
+  },
+  {
+    name: "ports",
+    type: "Partial<Ports>",
+    default: "provider, then DOM",
+    description:
+      "Replaces individual ports. Resolution order is this override, then the provider's ports, then DOM-backed ports. Swap the clock to assert the window by advancing a counter rather than by sleeping.",
+  },
+  {
+    name: "root",
+    type: "PortRoot",
+    default: "the owning document",
+    description:
+      "Scopes listeners and focus reads to a shadow root or a secondary window, so a deferred write inside a web component still hears that window going away.",
+  },
+];
+
+const resultRows = [
+  {
+    name: "state",
+    type: '"idle" | "held" | "committing" | "committed" | "failed"',
+    description: "The raw machine state. Also on the toast element as data-state, for styling.",
+  },
+  {
+    name: "status",
+    type: "the same five values",
+    description:
+      "An alias of state, not a narrower union. Every state here is one a user can distinguish, so there is nothing to collapse.",
+  },
+  {
+    name: "canUndo",
+    type: "boolean",
+    description: "True in held and nowhere else. Render the undo control on this and remove it afterwards.",
+    why: "Once the commit is in flight there is nothing to cancel. An Undo control rendered past this point is the lie the primitive exists to prevent.",
+  },
+  {
+    name: "items",
+    type: "readonly T[]",
+    description:
+      "The pending or in-flight batch, in the order it was scheduled. Still populated in failed, so a retry sends the same items.",
+  },
+  { name: "count", type: "number", description: "items.length. The number in “3 rows deleted”." },
+  {
+    name: "expiresAt",
+    type: "number | null",
+    description:
+      "Clock reading at which the window closes, or null whenever undo is not available. A reading rather than a duration, because a duration is stale the moment it is read.",
+  },
+  {
+    name: "remainingMs",
+    type: "number | null",
+    description:
+      "Live milliseconds left in the window, derived from expiresAt through the shared frame loop. Bucketed to 100 ms, or to 1000 ms under reduced motion, so it keeps counting without costing sixty renders a second.",
+  },
+  {
+    name: "progress",
+    type: "number | null",
+    description:
+      "0 when the window opens, 1 when it closes, null when none is open. Hand it to CSS as a custom property and let the compositor draw the ring.",
+  },
+  {
+    name: "failure",
+    type: "NormalizedFailure | null",
+    description:
+      "The normalised failure from a commit that rejected, carrying kind, message, detail, status, retryAfterMs, fields, canRetry and raw. An abort is reported as a failure here, unlike in useAction.",
+  },
+  {
+    name: "schedule(item)",
+    type: "(item: T) => void",
+    description:
+      "Adds an item to the batch: opens a window, merges into the open one when the coalesce tag matches, or queues behind a flush in progress.",
+  },
+  {
+    name: "undo()",
+    type: "() => void",
+    description:
+      "Rolls the optimistic change back and discards the write. Ignored unless canUndo, so a late press does nothing rather than reversing a commit.",
+  },
+  {
+    name: "flush()",
+    type: "() => void",
+    description:
+      "Commits now, without waiting for the window. From failed it retries the same batch, because that is the same request from the caller's point of view.",
+  },
+  {
+    name: "reset()",
+    type: "() => void",
+    description:
+      "Clears a settled entry. A pending window is left alone: use undo or flush, so a reset cannot silently drop a write.",
+  },
+  {
+    name: "attrs",
+    type: "UndoableAttrs",
+    description:
+      "data-state, data-count and aria-busy, framework-neutral. Spread them on the toast or region that hosts the affordance.",
+  },
+  {
+    name: "undoProps",
+    type: "UndoProps",
+    description:
+      'Spread straight onto the undo control: type="button", aria-label from altText, and onClick. There is no disabled key.',
+  },
+  {
+    name: "getUndoProps(overrides?)",
+    type: "(overrides?: UndoPropOverrides) => UndoProps",
+    description:
+      "The same props with onClick or altText composed in. Your handler runs after the library's. disabled is typed as never.",
+  },
+];
+
+const keyRows = [
+  {
+    keys: ["Tab"],
+    action:
+      "Moves to and from the undo control. It stays in the tab order for the whole window, because it is never disabled.",
+  },
+  {
+    keys: ["Enter"],
+    action:
+      "Presses Undo: rollback runs and the write is discarded. undoProps carries only onClick, so this is the browser's own button activation and nothing fires twice.",
+  },
+  { keys: ["Space"], action: "Presses Undo, by the same route." },
+  {
+    keys: ["Escape"],
+    action:
+      "Nothing. The hook binds no global keys. If your toast closes on Escape, close the toast — do not wire that to undo(), because dismissing a message is not the same decision as cancelling a write.",
+  },
+];
+
+const meta = [
+  { label: "Import", value: "@unruffled/react" },
+  { label: "Added to core", value: "1.90 kB brotli" },
+  { label: "States", value: "5" },
+];
+---
+
+<DocPage
+  title="useUndoable"
+  eyebrow="Primitive"
+  path="components/use-undoable"
+  meta={meta}
+  lede="Holds a mutation for a few seconds and sends it only once undo is no longer possible. Press Undo and the request is never made at all, which is the part the usual “Deleted · Undo” toast cannot do. The window survives navigation, tab close and unmount."
+  description="useUndoable reference: the five-state deferred write, the held window in which nothing has been sent, flush on navigation and unmount, coalescing, key contention, the full options and result tables, accessibility and keyboard behaviour."
+>
+  <Section id="description" title="Description">
+    <p>
+      “Deleted · Undo” is normally two unrelated pieces of software. A toast library owns the button and knows
+      nothing about a commit window, so its Undo is a dismiss with a callback and no timer. A data layer owns
+      the mutation and cannot recall a request once it is sent. Bolt the two together and you get the version
+      everybody has shipped: the <code>DELETE</code> left when the row disappeared, the toast offers Undo for as
+      long as it happens to be on screen, and pressing it has to fire a second mutation that tries to put the record
+      back — if your API even has one, and if nothing else touched the record in between.
+    </p>
+
+    <p>
+      <code>useUndoable</code> holds the write instead. The optimistic change lands locally, the request waits,
+      and undo is a cancellation rather than a compensating write. Nothing to reverse, nothing to race.
+    </p>
+
+    <p>
+      Underneath is a five-state machine. Every one of these is a state a user can distinguish, which is why
+      <code>status</code> is an alias of <code>state</code> rather than a narrower union: collapsing any pair would
+      hide the difference between <em>you can still undo this</em> and <em>this has been sent</em>.
+    </p>
+
+    <ul>
+      <li>
+        <strong><code>idle</code></strong> — nothing is deferred. Before the first <code>schedule()</code>,
+        after an undo, after <code>reset()</code>, and one second after a commit landed.
+      </li>
+      <li>
+        <strong><code>held</code></strong> — the window is open and
+        <strong>nothing has been sent</strong>. The user sees the row gone and an Undo control; the server has
+        heard nothing at all. This is the only state in which <code>canUndo</code> is true. The window timer and
+        the leave subscription are effects of this state, so they exist exactly while there is a write to lose.
+      </li>
+      <li>
+        <strong><code>committing</code></strong> — the request is in flight. <code>canUndo</code> is false and
+        <code>aria-busy</code> is true. Undo is gone, which is the truthful thing to render: there is nothing left
+        to cancel. An Undo that still “works” here is the bug the machine exists to prevent.
+      </li>
+      <li>
+        <strong><code>committed</code></strong> — the write landed. The entry stays observable for one second so
+        a view can swap “Deleted · Undo” for “Deleted” rather than having the message vanish mid-sentence, then
+        returns to <code>idle</code>. That second is a constant, not a prop, because it is not a user
+        decision.
+      </li>
+      <li>
+        <strong><code>failed</code></strong> — the commit itself rejected. The batch is kept so a retry sends the
+        same items, the failure is normalised, and the message is announced assertively, because the interface has
+        already claimed the change was made and a user who has moved on still needs to hear that it was not.
+      </li>
+    </ul>
+
+    <h3>The one distinction worth learning</h3>
+
+    <p>
+      <code>held</code> and <code>committing</code> are the load-bearing pair. Undo is possible in exactly one of
+      them, because in the other the request has already left. Every ecosystem Undo button that dismisses a toast
+      after the <code>DELETE</code> has landed is that distinction missing.
+    </p>
+
+    <p>
+      So the honest UI is not “show Undo for six seconds”. It is “render the control while
+      <code>canUndo</code>, and stop rendering it the moment that goes false”.
+    </p>
+  </Section>
+
+  <Section id="demo" title="Live demo">
+    <p>
+      A real call into the library. The commit is a real promise that increments
+      <code>requests sent</code> when it runs, so undo preventing the write is something you can watch rather than
+      something the page claims.
+    </p>
+
+    <Demo
+      title="Delete, with the write held back"
+      hint="5000 ms window · 400 ms commit"
+      note="Delete a row: it goes immediately and requests sent does not move. Press Undo and it never moves. Let the countdown run out and the write goes once, with every row you deleted in it."
+    >
+      <UndoableDemo client:visible />
+    </Demo>
+  </Section>
+
+  <Section id="basic-usage" title="Basic usage">
+    <Snippet code={basicCode} name="src/invoices/InvoiceList.tsx" />
+
+    <p>
+      Three things about that call site. The delete handler touches local state only — there is no request in
+      it, which is the whole point. <code>commit</code> is the only place the server is called, and it receives
+      the batch. <code>rollback</code> runs on undo and only on undo, so it can be the plain inverse of the optimistic
+      step rather than a second API call.
+    </p>
+
+    <p>
+      The undo control is rendered on <code>canUndo</code> and spread from
+      <code>undoProps</code>. That spread is what carries the accessible name, and it is the reason
+      <code>altText</code> is required rather than optional.
+    </p>
+
+    <Callout tone="note" title="This renders nothing">
+      <p>
+        There is no toast, no progress ring and no CSS in the library. <code>useUndoable</code> hands you a state,
+        a count, a live countdown and a set of props; the markup is yours. See
+        <a href="#toast">pairing with a toast</a> below for the one wiring detail that matters.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="survives" title="What it survives">
+    <p>
+      A deferred write has four ways of dying that a hand-rolled version normally does not cover. Each of
+      these is behaviour in the machine, not advice.
+    </p>
+
+    <h3>Navigation</h3>
+
+    <p>
+      The failure: the user deletes a row, clicks through to another page inside the window, and the write is
+      never sent. The row comes back on the next load and nothing told them. This is the most common way the
+      pattern loses data, and it is why <code>flushOn</code> defaults to both exits rather than to none.
+    </p>
+
+    <p>
+      While the state is <code>held</code>, the machine subscribes to the navigation port and commits on the
+      way out. The subscription is an effect of that state, so it is torn down the moment the window closes —
+      a listener that outlived the window would commit a batch that had already been undone.
+    </p>
+
+    <Snippet code={flushOnCode} name="flush-on.tsx" />
+
+    <h3>Why pagehide and visibilitychange, not beforeunload</h3>
+
+    <p>
+      The DOM port listens for <code>pagehide</code> on the window and for
+      <code>visibilitychange</code> on the document, and raises both as the
+      <code>pagehide</code> reason. <code>beforeunload</code> is used for something else entirely: blocking an exit
+      with the browser's own prompt.
+    </p>
+
+    <ul>
+      <li>
+        <code>beforeunload</code> is skipped outright when a tab is discarded under memory pressure and when the
+        page enters the back-forward cache, so a window flushed only from there is lost in exactly the cases where
+        the user did not choose to leave.
+      </li>
+      <li>
+        Registering a <code>beforeunload</code> listener can itself make a page ineligible for the back-forward
+        cache, which is a performance cost paid on every page view to catch an exit that <code>pagehide</code>
+        already reports.
+      </li>
+      <li>
+        <code>unload</code> is worse: unreliable on mobile and deprecated.
+      </li>
+      <li>
+        A backgrounded mobile tab may never run script again. A
+        <code>visibilitychange</code> to hidden is the only warning some devices give, so it is treated as the page
+        going away rather than waited out.
+      </li>
+    </ul>
+
+    <p>
+      The port also reports whether it can actually fire, through <code>flushable()</code>. Subscribing proves
+      nothing: core's own fallback navigation port returns a working disposer and never calls the handler, so
+      a subscription is not evidence that a flush will happen. When a window opens, <code>flushOn</code> is not
+      empty and the port reports that it cannot flush, a development build reports{" "}
+      <a href={href("diagnostics/ux1007")}>UX1007</a>. The React adapter's port reports true, so with the DOM
+      ports in place the rule stays quiet.
+    </p>
+
+    <h3>Unmount</h3>
+
+    <p>
+      The failure: the user deletes a row and the list unmounts inside the window — a modal closes, a tab
+      panel swaps, a route transition tears the subtree down without the navigation port hearing about it. The
+      service stops, the timer goes with it, and the write disappears.
+    </p>
+
+    <p>
+      So the hook flushes on the way out. Its cleanup is synchronous rather than deferred, because the service
+      is stopped from a microtask and a flush queued behind that would be sent to a dead machine and silently
+      dropped. The flush is guarded on <code>canUndo</code>, which is also why React's development
+      double-mount is harmless: the window cannot already be open at that point.
+    </p>
+
+    <p>
+      The matching decision sits in the machine: disposing an in-flight commit does
+      <em>not</em> abort it. Everywhere else in the library teardown aborts the request. Here the request is left
+      to land, because the user was told the change had happened and aborting would discard a delete they are owed.
+    </p>
+
+    <h3>Coalescing</h3>
+
+    <p>
+      The failure: five deletes in a row produce five stacked toasts, each with its own timer, and five
+      separate requests. The fourth toast pushes the first one off screen before its window has closed, and
+      the user has no idea which Undo belongs to what.
+    </p>
+
+    <p>
+      Schedules sharing a <code>coalesce</code> tag append to the open entry and restart its window, as one entry
+      with a count. It is a self-transition, so the entry keeps its identity and the open subscriptions are not
+      torn down and rebuilt once per keypress during a burst. The commit is then a single call holding every item,
+      which is also what your API probably wanted.
+    </p>
+
+    <Snippet code={coalesceCode} name="coalesce.tsx" />
+
+    <p>
+      Without a tag — or with a schedule whose tag does not match — a second entry would be a second write to
+      the same resource overlapping the first. The machine flushes what is held and queues the newcomer behind
+      it; the queued items open their own window as soon as that flush settles. Two writes to one resource
+      never overlap, and nothing is dropped.
+    </p>
+
+    <h3>Key contention</h3>
+
+    <p>
+      The failure: the row is deleted, the window is open, and a save on the same record lands in the middle
+      of it. Now the order of two writes to one record is decided by the network.
+    </p>
+
+    <p>
+      Declare a <code>key</code> and it is held from the moment the window opens until the commit settles or the
+      entry is undone — across the window, not just across the request. Every hook that declares the same key contends
+      through one registry, so{" "}
+      <a href={href("components/use-action")}>useAction</a> and <code>useUndoable</code> serialise against each
+      other without knowing one another exists.
+    </p>
+
+    <Snippet code={keyCode} name="src/invoices/row.tsx" />
+
+    <p>
+      If another holder already has the key, the window still opens. Refusing to schedule would drop a change
+      the user has already been shown as done, which is worse than two holders of one key; the second entry
+      simply never held it, so settling cannot release someone else's.
+    </p>
+
+    <p>There are 78 tests in the repository and none of them sleep.</p>
+  </Section>
+
+  <Section id="api" title="API">
+    <p>
+      <code>useUndoable</code> takes one options object. <code>commit</code> and <code>altText</code> are required;
+      everything else has a default, and <code>announce</code>, <code>classify</code> and
+      <code>messages</code> fall back to <code>UnruffledProvider</code> when one is mounted.
+    </p>
+
+    <PropsTable rows={optionRows} caption="useUndoable options" />
+
+    <h3>What it returns</h3>
+
+    <p>
+      Everything from <code>UndoableApi</code>, plus the four values the React layer adds:
+      <code>undoProps</code>, <code>getUndoProps</code>, <code>remainingMs</code> and
+      <code>progress</code>.
+    </p>
+
+    <PropsTable rows={resultRows} nameHeading="Value" caption="useUndoable return value" />
+
+    <h3>A commit that failed</h3>
+
+    <p>
+      <code>failed</code> keeps the batch, so retrying is the same write rather than a new one.
+      <code>flush()</code> is the retry; <code>reset()</code> is the dismissal. There is no automatic retry here:
+      the user watched this change happen several seconds ago, so the decision to try again belongs to them.
+    </p>
+
+    <Snippet code={failedCode} name="commit-failed.tsx" />
+  </Section>
+
+  <Section id="accessibility" title="Accessibility">
+    <h3>altText is required by the type</h3>
+
+    <p>
+      <code>altText</code> is not optional on <code>UndoableProps</code>, so a call site without it does not
+      compile. It becomes <code>aria-label</code> on <code>undoProps</code>, which means the accessible name
+      arrives with the spread rather than being something you have to remember. An icon-only Undo with no name
+      is the most common way this pattern ships broken: the window is correct, the request is correctly
+      deferred, and the one control that cancels it is unreachable by keyboard and screen reader.
+    </p>
+
+    <h3>The undo control is never disabled</h3>
+
+    <p>
+      <code>UndoProps</code> has no <code>disabled</code> key, and
+      <code>UndoPropOverrides</code> types it as <code>never</code>, so
+      <code>getUndoProps</code> rejects one. A disabled element leaves the tab order and throws the user's focus
+      to the top of the document, which is a strange thing to do to someone who is mid-decision about a deletion.
+      Once the window has closed there is nothing to cancel, so stop rendering the control: read
+      <code>canUndo</code> and unmount it rather than leaving a dead button behind.
+    </p>
+
+    <h3>What is announced</h3>
+
+    <p>
+      Three of the four announcements are opt-in, which is the opposite of
+      <a href={href("components/use-action")}>useAction</a>. Supply
+      <code>announce.scheduled</code> and it is read politely when the window opens, which is the only moment undo
+      is reachable and therefore the only moment a screen-reader user can act on it — an open window nobody announced
+      is a delete with no undo for anyone not watching the corner of the screen.
+      <code>announce.undone</code> and <code>announce.committed</code> are read politely too. Omit any of them and
+      it is silent.
+    </p>
+
+    <p>
+      The fourth needs no configuration: a failed commit announces the normalised failure message assertively.
+      Assertive on purpose — the interface has already claimed the change was made.
+      <code>announce: false</code> turns off all four. None of this reaches anyone unless
+      <code>Announcer</code> is mounted once near the root; see{" "}
+      <a href={href("components/announcer")}>Announcer</a>.
+    </p>
+
+    <p>
+      Put <code>attrs</code> on the element that hosts the control. It carries
+      <code>aria-busy</code> while the commit is in flight, so assistive technology knows the region is updating,
+      and <code>data-count</code> so coalesced copy can read “3 rows deleted” from CSS or from the DOM.
+    </p>
+
+    <h3>The countdown under reduced motion</h3>
+
+    <p>
+      <code>remainingMs</code> buckets to 100 ms normally and to 1000 ms under
+      <code>prefers-reduced-motion: reduce</code>. The number stays accurate and keeps counting: a user
+      deciding whether to press Undo needs the time more than the animation, so reduction means less motion,
+      not less information. Freezing or hiding the countdown would withhold the one fact that makes the
+      control usable.
+    </p>
+
+    <p>
+      Hand <code>progress</code> to CSS as a custom property rather than driving a ring from React state, and hide
+      the ring under reduction while leaving the number visible.
+    </p>
+
+    <Snippet code={progressCode} lang="css" name="src/styles/undo.css" />
+  </Section>
+
+  <Section id="keyboard" title="Keyboard">
+    <Keys rows={keyRows} />
+
+    <p>
+      The hook synthesises no keyboard activation, because <code>undoProps</code> sets
+      <code>type: "button"</code> and a native button already turns Enter and Space into a click. If your design
+      system insists on a non-button element, give it <code>role="button"</code> and a tabindex of 0 and wire the
+      keys yourself — or use a button, which brings activation, the correct role and platform shortcuts you will
+      otherwise reimplement one at a time.
+    </p>
+
+    <p>
+      One thing worth checking by hand: that the undo control is reachable by Tab from wherever focus actually
+      is when the window opens. A toast portalled to the end of the document is often several Tab stops away
+      from the row the user just deleted, and a six-second window is not long enough to go looking.
+    </p>
+  </Section>
+
+  <Section id="toast" title="Pairing with a toast">
+    <p>
+      This library renders nothing, so the toast is yours. That is the honest trade: it composes over whatever
+      notification system you already have instead of competing with it, and in exchange you wire two things
+      together.
+    </p>
+
+    <p>
+      The wiring detail that matters is the timer. Your toast library has one; so does the machine. If you let
+      both run, they will disagree — and they disagree in the direction that loses data, because a toast that
+      auto-dismisses at its own 5000 ms takes the Undo control away while the window is still open, and a
+      toast that outlives the window leaves an Undo on screen after the <code>DELETE</code> has gone out. Coalescing
+      makes it worse: a merged repeat restarts the machine's window and your toast knows nothing about it.
+    </p>
+
+    <p>
+      So derive the toast's lifetime from <code>remainingMs</code>, render it on
+      <code>canUndo</code>, and give it a stable key so a merge updates the existing toast rather than
+      stacking a new one.
+    </p>
+
+    <Snippet code={toastCode} name="src/toast/undo-toast.tsx" />
+
+    <Callout tone="warning" title="Dismissing the toast is not undoing">
+      <p>
+        If the user closes the toast by hand, close the toast. Do not call <code>undo()</code>, and do not
+        call
+        <code>flush()</code> either unless that is genuinely what your product means — one of those discards a write
+        the user asked for and the other sends it early. Letting the window run out is almost always the right answer,
+        and the write still goes if they navigate away first.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="mistakes" title="Common mistakes">
+    <Mistake
+      title="An Undo button that never gets the accessible name"
+      why="altText is required, so this compiles and the name still never reaches the DOM: handing undo straight to your own onClick skips the spread that carries aria-label. The window is correct, the request is correctly deferred, and the one control that cancels it is an unlabelled icon. A screen-reader user hears “button”, and a six-second window is not long enough to go exploring."
+      bad={`// altText is set, and nothing uses it.
+<button onClick={deletion.undo}>
+  <UndoIcon aria-hidden="true" />
+</button>`}
+      good={`// The spread carries type="button" and aria-label from altText.
+<button {...deletion.undoProps}>
+  <UndoIcon aria-hidden="true" />
+</button>
+
+// Per-control label, when one Undo is not like the others:
+<button {...deletion.getUndoProps({ altText: "Undo removing 3 invoices" })}>
+  <UndoIcon aria-hidden="true" />
+</button>`}
+    />
+
+    <Mistake
+      title="Running your own setTimeout beside the window"
+      why="Now there are two timers for one decision, and nothing keeps them in step. The machine's window restarts when a repeat coalesces and closes early when the user navigates; your timeout does neither. Whichever fires first wins, so the Undo control either disappears while the write is still cancellable or stays on screen after the DELETE has gone out. The window is already a state — read it."
+      bad={`const [showUndo, setShowUndo] = useState(false);
+
+const remove = (row: Row) => {
+  setRows((current) => current.filter((item) => item.id !== row.id));
+  deletion.schedule(row);
+  setShowUndo(true);
+  setTimeout(() => setShowUndo(false), 6000);
+};`}
+      good={`const remove = (row: Row) => {
+  setRows((current) => current.filter((item) => item.id !== row.id));
+  deletion.schedule(row);
+};
+
+// One timer, and it is the one that decides whether undo is possible.
+{deletion.canUndo ? (
+  <UndoToast
+    remainingMs={deletion.remainingMs}
+    count={deletion.count}
+    undoProps={deletion.undoProps}
+  />
+) : null}`}
+    />
+
+    <Mistake
+      title="Calling the server in the optimistic step"
+      why="The write then happens twice: once from the handler and once from commit when the window closes. Worse, the first one has already landed, so undo cannot prevent anything — the user presses it, rollback puts the row back locally, and the record is gone on the server. This is the original bug reintroduced inside the primitive that exists to fix it. The optimistic step is local state only."
+      bad={`const remove = (row: Row) => {
+  setRows((current) => current.filter((item) => item.id !== row.id));
+  api.deleteRow(row.id); // already gone
+  deletion.schedule(row);
+};`}
+      good={`const deletion = useUndoable<Row>({
+  // The only place the server is called.
+  commit: (batch) => api.deleteRows(batch.map((row) => row.id)),
+  rollback: (batch) => setRows((current) => [...current, ...batch]),
+  altText: "Undo delete",
+});
+
+const remove = (row: Row) => {
+  setRows((current) => current.filter((item) => item.id !== row.id));
+  deletion.schedule(row);
+};`}
+    />
+
+    <Mistake
+      title="Treating undo as a second mutation that reverses the first"
+      why="A compensating write is not an undo. It needs an endpoint that may not exist, it fails on its own account, it restores a record with a new id or a new updated_at, and it loses whatever the deletion cascaded. It also cannot be honest about ordering: between the DELETE and the restore, other clients saw the record gone. In held nothing has been sent, so undo is a cancellation — rollback puts your local state back and the request is never made."
+      bad={`const deletion = useUndoable<Row>({
+  commit: (batch) => api.deleteRows(batch.map((row) => row.id)),
+  // Called on undo, when nothing has been deleted yet.
+  rollback: (batch) => api.restoreRows(batch.map((row) => row.id)),
+  altText: "Undo delete",
+});`}
+      good={`const deletion = useUndoable<Row>({
+  commit: (batch) => api.deleteRows(batch.map((row) => row.id)),
+  // The inverse of the optimistic step, and nothing more.
+  rollback: (batch) => setRows((current) => [...current, ...batch]),
+  altText: "Undo delete",
+});`}
+    />
+
+    <Mistake
+      title="Disabling the undo control as the window runs out"
+      why="A disabled element leaves the tab order, so the user who was reaching for Undo has their focus thrown to the top of the document at the exact moment the control stopped working. There is also nothing to disable: once canUndo is false the machine ignores undo() outright. Stop rendering the control instead. UndoProps has no disabled key and UndoPropOverrides types it as never, so the only way to get one is to write it on your own element."
+      bad={`<button {...deletion.undoProps} disabled={!deletion.canUndo}>
+  Undo
+</button>`}
+      good={`{deletion.canUndo ? <button {...deletion.undoProps}>Undo</button> : null}`}
+    />
+
+    <Mistake
+      title="Emptying flushOn to silence UX1007"
+      why="The rule is reporting that the navigation port cannot fire, which means the window dies on navigation and tab close. An empty flushOn is the opt-out for a deliberate decision that the write may be lost, so using it to quiet the console converts a warning into silent data loss. Fix the port instead: the React adapter supplies a working one, and the rule is quiet by default because of it. Reach for the opt-out only when losing the write is genuinely acceptable, and say so in the code."
+      bad={`// Console is quiet. The DELETE now dies on route change.
+const deletion = useUndoable<Row>({ commit, altText: "Undo", flushOn: [] });`}
+      good={`// Nothing to configure: createDomPorts reports flushable() === true.
+const deletion = useUndoable<Row>({ commit, altText: "Undo" });
+
+// Or, deliberately, with the reason written down:
+// Draft reordering is re-derived on load, so a lost flush costs nothing.
+const reorder = useUndoable<Row>({ commit, altText: "Undo", flushOn: [] });`}
+    />
+  </Section>
+</DocPage>

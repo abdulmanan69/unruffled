@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import { useAction, useAnnounce, useFailure, usePrefersReducedMotion } from "@unruffled/react";
+import { useAction, useAnnounce, useFailure, usePrefersReducedMotion, useUndoable } from "@unruffled/react";
 import "../../styles/demos.css";
 
 /** A promise that settles after `ms`, honouring the abort signal the library hands it. */
@@ -413,6 +413,158 @@ export function RetryDemo() {
         The countdown is a real value from the frame port, bucketed so it re-renders ten times a second rather
         than sixty.
       </p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
+
+interface DemoRow {
+  readonly id: string;
+  readonly label: string;
+}
+
+const DEMO_ROWS: readonly DemoRow[] = [
+  { id: "row:1", label: "Invoice 1041 — Northwind" },
+  { id: "row:2", label: "Invoice 1042 — Initech" },
+  { id: "row:3", label: "Invoice 1043 — Soylent" },
+  { id: "row:4", label: "Invoice 1044 — Hooli" },
+];
+
+/** Puts rolled-back rows back in their original positions, so an undo does not reorder the list. */
+function restored(current: readonly DemoRow[], rows: readonly DemoRow[]): readonly DemoRow[] {
+  const ids = new Set([...current, ...rows].map((row) => row.id));
+  return DEMO_ROWS.filter((row) => ids.has(row.id));
+}
+
+const rowCount = (count: number) => `${String(count)} ${count === 1 ? "row" : "rows"}`;
+
+/**
+ * The write that has not been sent yet.
+ *
+ * The row goes immediately and the DELETE does not. `requests sent` is incremented inside
+ * the commit itself, so Undo is visibly the difference between a request happening and a
+ * request never existing — not a toast dismissed after the fact.
+ */
+export function UndoableDemo() {
+  const [rows, setRows] = useState(DEMO_ROWS);
+  const [sent, setSent] = useState(0);
+  const [log, setLog] = useState<readonly string[]>([]);
+
+  const record = (entry: string) => {
+    setLog((previous) => [entry, ...previous].slice(0, 6));
+  };
+
+  const deletion = useUndoable<DemoRow>({
+    // Shaped like `delayed` above, minus the abort listener: nothing in this machine aborts
+    // a commit, because a request already on the wire is a write the user is owed.
+    commit: (batch) =>
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          setSent((count) => count + batch.length);
+          resolve();
+        }, 400);
+      }),
+    rollback: (batch) => {
+      setRows((current) => restored(current, batch));
+    },
+    // A short window so the countdown is watchable. The default is 6000ms.
+    windowMs: 5000,
+    coalesce: "demo:row-delete",
+    altText: "Undo delete",
+    announce: { scheduled: "Deleted. Undo available.", undone: "Delete undone", committed: "Delete saved" },
+    onUndone: (batch) => {
+      record(`Undone, nothing was sent — ${rowCount(batch.length)}`);
+    },
+    onCommitted: (batch) => {
+      record(`Committed, the write went out — ${rowCount(batch.length)}`);
+    },
+  });
+
+  return (
+    <div className="demo-stack">
+      <ul className="demo-log">
+        {rows.length === 0 ? <li className="is-empty">Every row is deleted.</li> : null}
+        {rows.map((row) => (
+          <li key={row.id}>
+            {row.label}{" "}
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={() => {
+                setRows((current) => current.filter((item) => item.id !== row.id));
+                deletion.schedule(row);
+              }}
+            >
+              Delete
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {deletion.canUndo ? (
+        <div className="demo-row">
+          <strong>{rowCount(deletion.count)} deleted</strong>
+          <button {...deletion.undoProps} className="btn btn--primary">
+            Undo
+          </button>
+          <span>
+            {deletion.remainingMs === null ? "—" : `${(deletion.remainingMs / 1000).toFixed(1)}s left`}
+          </span>
+        </div>
+      ) : null}
+
+      <dl className="demo-readout">
+        <div>
+          <dt className="label">state</dt>
+          <dd data-state={deletion.state}>{deletion.state}</dd>
+        </div>
+        <div>
+          <dt className="label">canUndo</dt>
+          <dd>{String(deletion.canUndo)}</dd>
+        </div>
+        <div>
+          <dt className="label">count</dt>
+          <dd>{deletion.count}</dd>
+        </div>
+        <div>
+          <dt className="label">remainingMs</dt>
+          <dd>{deletion.remainingMs === null ? "—" : String(deletion.remainingMs)}</dd>
+        </div>
+        <div>
+          <dt className="label">requests sent</dt>
+          <dd>{sent}</dd>
+        </div>
+      </dl>
+
+      <p className="demo-hint">
+        Delete two rows inside the window and they merge into one entry with one countdown, because they share
+        a coalesce tag. While the state is <strong>held</strong>, <code>requests sent</code> has not moved:
+        the DELETE is still in this tab.
+      </p>
+
+      <ul className="demo-log" aria-live="polite">
+        {log.length === 0 ? <li className="is-empty">Nothing has settled yet.</li> : null}
+        {log.map((entry, index) => (
+          <li key={`${entry}-${String(index)}`}>{entry}</li>
+        ))}
+      </ul>
+
+      {rows.length < DEMO_ROWS.length && !deletion.canUndo ? (
+        <div className="demo-row">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setRows(DEMO_ROWS);
+              setSent(0);
+              setLog([]);
+            }}
+          >
+            Reset the list
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

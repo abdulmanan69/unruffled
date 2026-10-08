@@ -1,0 +1,62 @@
+---
+/**
+ * A code block with a filename and a copy button.
+ *
+ * Highlighting is Astro's built-in Shiki, which runs at build time and ships no JavaScript.
+ * The only script for this is the copy handler, delegated once for every snippet on the page
+ * rather than attached per block.
+ */
+import { Code } from "astro:components";
+
+interface Props {
+  code: string;
+  lang?: string;
+  /** Shown on the left of the bar. Usually a path, sometimes a short label. */
+  name?: string;
+}
+
+const { code, lang = "tsx", name } = Astro.props;
+---
+
+<figure class="snippet">
+  <figcaption class="snippet__bar">
+    <span class="snippet__name">{name ?? lang}</span>
+    <button class="snippet__copy" type="button" data-copy aria-label={`Copy ${name ?? "code"} to clipboard`}>
+      Copy
+    </button>
+  </figcaption>
+  <Code code={code} lang={lang as never} themes={{ light: "github-light", dark: "github-dark" }} />
+</figure>
+
+<script>
+  // Delegated once per page. Attaching a listener per snippet would scale with page length
+  // for no benefit.
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const button = target.closest("[data-copy]");
+    if (!(button instanceof HTMLButtonElement)) return;
+
+    const code = button.closest(".snippet")?.querySelector("pre")?.textContent;
+    if (!code) return;
+
+    void navigator.clipboard.writeText(code).then(
+      () => {
+        button.textContent = "Copied";
+        button.dataset.copied = "";
+        setTimeout(() => {
+          button.textContent = "Copy";
+          delete button.dataset.copied;
+        }, 1600);
+      },
+      () => {
+        // Clipboard access can be refused outright, in an iframe or over plain HTTP. Saying
+        // so is better than a button that silently does nothing.
+        button.textContent = "Press Ctrl+C";
+        setTimeout(() => {
+          button.textContent = "Copy";
+        }, 2400);
+      },
+    );
+  });
+</script>

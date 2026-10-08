@@ -1,0 +1,52 @@
+---
+/**
+ * An options or returns table.
+ *
+ * Deliberately not generated from the type declarations. A generated table lists every
+ * property with its type and tells you nothing about which ones matter or why a default was
+ * chosen, and the defaults here are the opinionated part of the library.
+ */
+export interface PropRow {
+  name: string;
+  type: string;
+  default?: string;
+  description: string;
+  /** A second line for the reasoning behind a default, where it is not obvious. */
+  why?: string;
+}
+
+interface Props {
+  rows: PropRow[];
+  caption?: string;
+  nameHeading?: string;
+}
+
+const { rows, caption, nameHeading = "Option" } = Astro.props;
+---
+
+<table class="doc-table">
+  {caption ? <caption class="sr-only">{caption}</caption> : null}
+  <thead>
+    <tr>
+      <th scope="col">{nameHeading}</th>
+      <th scope="col">Type</th>
+      <th scope="col">Default</th>
+      <th scope="col">Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    {
+      rows.map((row) => (
+        <tr>
+          <th scope="row"><code class="is-name">{row.name}</code></th>
+          <td class="is-type">{row.type}</td>
+          <td class="is-default">{row.default ?? "—"}</td>
+          <td>
+            <p>{row.description}</p>
+            {row.why ? <p><em>{row.why}</em></p> : null}
+          </td>
+        </tr>
+      ))
+    }
+  </tbody>
+</table>

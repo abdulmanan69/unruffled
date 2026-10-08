@@ -1,0 +1,404 @@
+/*
+ * Documentation page furniture.
+ *
+ * The pieces here exist so every page is assembled from the same parts: a head, snippets,
+ * framed demos, prop tables, keyboard tables and callouts. Pages that invent their own
+ * layout are how a documentation site stops feeling like one product.
+ */
+
+/* ---- Page head --------------------------------------------------------- */
+
+.doc-head {
+  display: grid;
+  gap: var(--s-3);
+  max-width: 70ch;
+  padding-bottom: var(--s-5);
+  margin-bottom: var(--s-6);
+  border-bottom: 1px solid var(--rule);
+}
+
+.doc-head__lede {
+  font-size: var(--text-md);
+  color: var(--ink-soft);
+}
+
+.doc-head__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--graphite);
+}
+
+.doc-head__meta strong {
+  color: var(--signal);
+  font-weight: 500;
+}
+
+/* ---- Sections ---------------------------------------------------------- */
+
+.doc-body {
+  display: grid;
+  gap: var(--s-7);
+  max-width: 76ch;
+  min-width: 0;
+}
+
+.doc-section {
+  display: grid;
+  gap: var(--s-4);
+  scroll-margin-top: 5rem;
+}
+
+.doc-section > h2 {
+  font-size: var(--text-xl);
+}
+
+.doc-section > h3 {
+  margin-top: var(--s-3);
+}
+
+.doc-section p,
+.doc-section li {
+  color: var(--ink-soft);
+}
+
+.doc-section ul,
+.doc-section ol {
+  margin: 0;
+  padding-left: var(--s-5);
+  display: grid;
+  gap: var(--s-2);
+}
+
+.doc-section :not(pre) > code {
+  padding: 0.1em 0.35em;
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+}
+
+/* ---- Snippet ----------------------------------------------------------- */
+
+.snippet {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--paper-sunk);
+}
+
+.snippet__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-raised);
+}
+
+.snippet__name {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--graphite);
+}
+
+.snippet__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.snippet__copy:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+
+.snippet__copy[data-copied] {
+  border-color: var(--settled);
+  color: var(--settled);
+}
+
+.snippet pre {
+  margin: 0;
+  padding: var(--s-4);
+  overflow-x: auto;
+  background: transparent !important;
+  font-size: var(--text-sm);
+  line-height: 1.65;
+}
+
+/* ---- Demo frame -------------------------------------------------------- */
+
+.demo {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--paper-raised);
+}
+
+.demo__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--rule);
+}
+
+.demo__hint {
+  font-size: var(--text-xs);
+  color: var(--graphite);
+}
+
+.demo__body {
+  padding: var(--s-5);
+}
+
+.demo__note {
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--rule);
+  background: var(--paper-sunk);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+/* ---- Tables ------------------------------------------------------------ */
+
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  display: block;
+  overflow-x: auto;
+}
+
+.doc-table th,
+.doc-table td {
+  padding: var(--s-3);
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-table thead th {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--graphite);
+  font-weight: 500;
+  border-bottom-color: var(--rule-strong);
+  white-space: nowrap;
+}
+
+.doc-table td code,
+.doc-table th code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--ink);
+}
+
+.doc-table .is-name {
+  white-space: nowrap;
+  color: var(--signal);
+}
+
+.doc-table .is-type {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--graphite);
+}
+
+.doc-table .is-default {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+
+.doc-table td p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.doc-table td p + p {
+  margin-top: var(--s-2);
+}
+
+/* ---- Keyboard ---------------------------------------------------------- */
+
+kbd {
+  display: inline-block;
+  padding: 0.15em 0.45em;
+  border: 1px solid var(--rule-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--paper-raised);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* ---- Callout ----------------------------------------------------------- */
+
+.callout {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border-radius: var(--radius);
+  border-left: 2px solid var(--signal);
+  background: var(--signal-soft);
+}
+
+.callout__title {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--signal-ink);
+}
+
+.callout p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.callout[data-tone="warning"] {
+  border-left-color: var(--held);
+  background: var(--held-soft);
+}
+
+.callout[data-tone="warning"] .callout__title {
+  color: var(--held);
+}
+
+.callout[data-tone="danger"] {
+  border-left-color: var(--fault);
+  background: var(--fault-soft);
+}
+
+.callout[data-tone="danger"] .callout__title {
+  color: var(--fault);
+}
+
+.callout[data-tone="good"] {
+  border-left-color: var(--settled);
+  background: var(--settled-soft);
+}
+
+.callout[data-tone="good"] .callout__title {
+  color: var(--settled);
+}
+
+/* ---- Mistake pairs ----------------------------------------------------- */
+
+/*
+ * Wrong on the left, right on the right. Showing both is the point: a documentation page
+ * that only shows the correct call teaches nothing about the failure it prevents.
+ */
+.mistakes {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.mistake {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.mistake__title {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+}
+
+.mistake__why {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.mistake__pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--s-3);
+}
+
+.mistake__side {
+  display: grid;
+  gap: var(--s-2);
+  align-content: start;
+}
+
+.mistake__flag {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.mistake__flag[data-kind="bad"] {
+  color: var(--fault);
+}
+
+.mistake__flag[data-kind="good"] {
+  color: var(--settled);
+}
+
+/* ---- Next and previous ------------------------------------------------- */
+
+.doc-pager {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-4);
+  margin-top: var(--s-8);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+
+.doc-pager a {
+  display: grid;
+  gap: 2px;
+  text-decoration: none;
+  max-width: 20rem;
+}
+
+.doc-pager a:last-child {
+  text-align: right;
+}
+
+.doc-pager span {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--graphite);
+}
+
+.doc-pager strong {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 500;
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+}

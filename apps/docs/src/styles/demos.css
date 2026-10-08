@@ -1,0 +1,157 @@
+/*
+ * Live demo internals.
+ *
+ * Shared by every demo so they read as one family rather than a scrapbook. The readout is
+ * mono and tabular throughout, because the values in it are literals the reader will go on
+ * to type.
+ */
+
+.demo-stack {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.demo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.demo-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5);
+  margin: 0;
+}
+
+.demo-readout div {
+  display: grid;
+  gap: 2px;
+}
+
+.demo-readout dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.demo-readout dd[data-state="busy"],
+.demo-readout dd[data-state="settling"],
+.demo-readout dd[data-state="backoff"] {
+  color: var(--signal);
+}
+
+.demo-readout dd[data-state="success"] {
+  color: var(--settled);
+}
+
+.demo-readout dd[data-state="error"] {
+  color: var(--fault);
+}
+
+/* The point of the row: this value is a constant, and the constant is "never". */
+.demo-readout dd.is-never {
+  color: var(--settled);
+}
+
+.demo-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--graphite);
+  max-width: 68ch;
+}
+
+.demo-hint strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.demo-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: start;
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+.demo-toggle input {
+  margin-top: 0.3em;
+  accent-color: var(--signal);
+}
+
+.demo-toggle small {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--graphite);
+}
+
+.demo-log {
+  display: grid;
+  gap: var(--s-1);
+  margin: 0;
+  padding: var(--s-3);
+  list-style: none;
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+  min-height: 4.5rem;
+  align-content: start;
+}
+
+.demo-log .is-empty {
+  color: var(--graphite);
+}
+
+.demo-log code {
+  color: var(--signal);
+}
+
+.demo-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.demo-chip {
+  min-height: 2rem;
+  padding: 0 var(--s-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.demo-chip[aria-pressed="true"] {
+  background: var(--signal-soft);
+  border-color: var(--signal);
+  color: var(--signal-ink);
+}
+
+.demo-summary {
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  background: var(--fault-soft);
+  border-left: 2px solid var(--fault);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.demo-fields {
+  margin: 0;
+  padding-left: var(--s-5);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+.demo-fields code {
+  font-family: var(--font-mono);
+  color: var(--fault);
+}

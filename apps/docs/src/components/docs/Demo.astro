@@ -1,0 +1,25 @@
+---
+/**
+ * A framed live demo.
+ *
+ * Every interactive example on the site sits in one of these, so a reader always knows which
+ * parts of a page are real and which are listings.
+ */
+interface Props {
+  title: string;
+  hint?: string;
+  note?: string;
+}
+const { title, hint, note } = Astro.props;
+---
+
+<figure class="demo">
+  <figcaption class="demo__head">
+    <span class="label">{title}</span>
+    {hint ? <span class="demo__hint">{hint}</span> : null}
+  </figcaption>
+  <div class="demo__body">
+    <slot />
+  </div>
+  {note ? <p class="demo__note">{note}</p> : null}
+</figure>

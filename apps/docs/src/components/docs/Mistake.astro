@@ -1,0 +1,34 @@
+---
+/**
+ * A wrong/right pair.
+ *
+ * Showing only the correct call teaches nothing about the failure it prevents, which is why
+ * every component page ends with a set of these rather than a list of tips.
+ */
+import Snippet from "./Snippet.astro";
+
+interface Props {
+  title: string;
+  why: string;
+  bad: string;
+  good: string;
+  lang?: string;
+}
+
+const { title, why, bad, good, lang = "tsx" } = Astro.props;
+---
+
+<article class="mistake">
+  <h3 class="mistake__title">{title}</h3>
+  <p class="mistake__why">{why}</p>
+  <div class="mistake__pair">
+    <div class="mistake__side">
+      <p class="mistake__flag" data-kind="bad">What breaks</p>
+      <Snippet code={bad} lang={lang} name="before" />
+    </div>
+    <div class="mistake__side">
+      <p class="mistake__flag" data-kind="good">What to do</p>
+      <Snippet code={good} lang={lang} name="after" />
+    </div>
+  </div>
+</article>

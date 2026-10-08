@@ -1,0 +1,77 @@
+---
+/**
+ * The frame every documentation page uses.
+ *
+ * It owns the head, the stylesheet and the previous/next pager, so a page body is only its
+ * content. The pager is derived from the navigation order rather than written per page,
+ * which means adding a page in one place cannot leave a dangling link somewhere else.
+ */
+import Base from "../../layouts/Base.astro";
+import "../../styles/docs.css";
+import { NAV, href } from "../../lib/site";
+
+interface Props {
+  title: string;
+  /** One or two sentences. What this page is for, in the reader's terms. */
+  lede: string;
+  path: string;
+  /** Short mono facts under the lede, such as import path or bundle cost. */
+  meta?: { label: string; value: string }[];
+  description?: string;
+  eyebrow?: string;
+}
+
+const { title, lede, path, meta = [], description, eyebrow = "Documentation" } = Astro.props;
+
+// Flatten the navigation into reading order so the pager matches the sidebar exactly.
+const ordered = NAV.flatMap((section) => section.links);
+const index = ordered.findIndex((link) => link.path === path);
+const previous = index > 0 ? ordered[index - 1] : undefined;
+const next = index >= 0 && index < ordered.length - 1 ? ordered[index + 1] : undefined;
+---
+
+<Base title={title} path={path} description={description ?? lede}>
+  <header class="doc-head">
+    <p class="label">{eyebrow}</p>
+    <h1>{title}</h1>
+    <p class="doc-head__lede">{lede}</p>
+    {
+      meta.length > 0 && (
+        <p class="doc-head__meta">
+          {meta.map((item) => (
+            <span>
+              {item.label} <strong>{item.value}</strong>
+            </span>
+          ))}
+        </p>
+      )
+    }
+  </header>
+
+  <div class="doc-body">
+    <slot />
+  </div>
+
+  <nav class="doc-pager" aria-label="Pagination">
+    {
+      previous ? (
+        <a href={href(previous.path)} rel="prev">
+          <span>Previous</span>
+          <strong>{previous.label}</strong>
+        </a>
+      ) : (
+        <span />
+      )
+    }
+    {
+      next ? (
+        <a href={href(next.path)} rel="next">
+          <span>Next</span>
+          <strong>{next.label}</strong>
+        </a>
+      ) : (
+        <span />
+      )
+    }
+  </nav>
+</Base>

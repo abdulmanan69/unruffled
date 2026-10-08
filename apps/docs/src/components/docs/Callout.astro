@@ -1,0 +1,19 @@
+---
+/**
+ * A short aside.
+ *
+ * Tones map to the same palette the library uses for states, so a danger callout and a
+ * failed action are the same red. One vocabulary, used everywhere.
+ */
+interface Props {
+  tone?: "note" | "good" | "warning" | "danger";
+  title?: string;
+}
+const { tone = "note", title } = Astro.props;
+const fallback = { note: "Note", good: "Do this", warning: "Careful", danger: "Do not" };
+---
+
+<aside class="callout" data-tone={tone}>
+  <p class="callout__title">{title ?? fallback[tone]}</p>
+  <slot />
+</aside>

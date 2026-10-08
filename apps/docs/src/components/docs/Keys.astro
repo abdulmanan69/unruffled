@@ -1,0 +1,44 @@
+---
+/**
+ * Keyboard reference.
+ *
+ * Every interactive page has one. A library that claims keyboard support and then documents
+ * none of it is asking to be taken on trust.
+ */
+export interface KeyRow {
+  keys: string[];
+  action: string;
+}
+
+interface Props {
+  rows: KeyRow[];
+}
+
+const { rows } = Astro.props;
+---
+
+<table class="doc-table">
+  <thead>
+    <tr>
+      <th scope="col">Key</th>
+      <th scope="col">Result</th>
+    </tr>
+  </thead>
+  <tbody>
+    {
+      rows.map((row) => (
+        <tr>
+          <th scope="row">
+            {row.keys.map((key, index) => (
+              <>
+                {index > 0 ? <span aria-hidden="true"> then </span> : null}
+                <kbd>{key}</kbd>
+              </>
+            ))}
+          </th>
+          <td><p>{row.action}</p></td>
+        </tr>
+      ))
+    }
+  </tbody>
+</table>

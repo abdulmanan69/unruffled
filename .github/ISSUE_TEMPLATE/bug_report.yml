@@ -1,0 +1,76 @@
+name: Bug report
+description: Something behaves differently from what the documentation says.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A reproduction beats a description. The playground is usually the fastest one:
+        configure the failure at https://abdulmanan69.github.io/unruffled/playground/ and
+        paste the configuration it prints back to you.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The version of "@unruffled/react" (or "@unruffled/core") you are on.
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: primitive
+    attributes:
+      label: Which primitive
+      options:
+        - useAction
+        - useFailure
+        - Announcer or useAnnounce
+        - UnruffledProvider
+        - usePrefersReducedMotion
+        - Diagnostics
+        - "@unruffled/testing"
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Quote the documentation if it says something different.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: A playground configuration, a minimal component, or a failing test.
+      render: tsx
+    validations:
+      required: true
+
+  - type: input
+    id: diagnostic
+    attributes:
+      label: Diagnostic code
+      description: Any UX#### code the console reported. Leave blank if none.
+      placeholder: UX1003
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: React version, bundler, browser, and whether this is dev or a production build.
+      placeholder: |
+        React 19.3.0, Vite 8, Chrome 141, development build
+    validations:
+      required: true

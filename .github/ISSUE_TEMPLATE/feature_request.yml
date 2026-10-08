@@ -1,0 +1,62 @@
+name: Feature request
+description: Propose a behaviour this library should own.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please check CONTRIBUTING.md. This library deliberately will not build
+        buttons, dialogs, toasts, command palettes, date pickers, data grids, icon packs,
+        theme kits, tour rendering or animation runtimes, and it emits no CSS. Those tiers are
+        solved and defended; a proposal to add one will be declined.
+
+        What is in scope is the lifecycle of an action. The roadmap lists the primitives
+        already designed: https://abdulmanan69.github.io/unruffled/roadmap/
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What does a user experience today that they should not? Describe the defect, not the
+        feature. "Our delete has no undo" is useful; "add an undo API" is not.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What you write today
+      description: The hand-rolled version, and which part of it is easy to get wrong.
+      render: tsx
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed call site
+      description: >
+        What the code would look like if this existed. One realistic example beats an API
+        specification.
+      render: tsx
+    validations:
+      required: true
+
+  - type: textarea
+    id: prior
+    attributes:
+      label: Prior art
+      description: >
+        Which libraries solve this already, and why their solution does not fit. If something
+        popular solves it well, say so; that is usually a reason for this library not to.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require the library to render any markup or ship any CSS.
+          required: true
+        - label: I have read the list in CONTRIBUTING.md of what this library will not build.
+          required: true

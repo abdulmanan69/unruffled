@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/abdulmanan69/unruffled/security/advisories/new
+    about: Report privately. Please do not open a public issue for a security problem.
+  - name: Documentation
+    url: https://abdulmanan69.github.io/unruffled/
+    about: The API reference, the accessibility notes and the nine diagnostic rules.
+  - name: Playground
+    url: https://abdulmanan69.github.io/unruffled/playground/
+    about: Reproduce a behaviour before filing, and copy the configuration into your report.

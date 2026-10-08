@@ -28,6 +28,11 @@ everything listed works, and nothing is half-shipped.
   `field_errors` maps, flat path lists, bare messages, fetch network errors and aborts. Honest
   `canRetry` and `canRetryNow`, and a live countdown from `Retry-After` in both of its legal
   forms.
+- **`useUndoable`** — the deferred write. The interface says "Deleted, Undo" and nothing is
+  sent until the window expires, so Undo cancels a request rather than apologising for one
+  that already landed. The write survives navigation and unmount; repeats sharing a tag
+  coalesce into one commit with a count; `altText` is required by the type, because a toast
+  action with no accessible label cannot be reached by keyboard or screen reader.
 - **`<Announcer>` and `useAnnounce`** — two live regions, polite and assertive, with a queue
   that spaces writes, drops duplicates inside 500ms and alternates an invisible suffix so a
   repeated message announces at all.
@@ -56,11 +61,11 @@ everything listed works, and nothing is half-shipped.
 
 ### Measured
 
-- `@unruffled/react` with `@unruffled/core`, everything retained: **7.08 kB brotli**.
-- The React layer alone: 2.07 kB. `<Announcer>` alone: 692 B.
-- `@unruffled/core` barrel 4.83 kB, machine runtime 1.49 kB, ports 454 B.
+- `@unruffled/react` with `@unruffled/core`, everything retained: **8.25 kB brotli**.
+- `useAction` alone: 2.08 kB on top of core. `useUndoable`: 1.90 kB. `<Announcer>`: 692 B.
+- `@unruffled/core` barrel 5.77 kB, machine runtime 1.49 kB, ports 461 B.
 - Zero runtime dependencies in every published package.
-- 50 tests, with every timing assertion driven by an injected fake clock.
+- 78 tests, with every timing assertion driven by an injected fake clock.
 
 ### Known limits
 

@@ -105,21 +105,25 @@ That button now:
 - **announces the outcome** to assistive technology, politely on success and assertively on
   failure.
 
+And when the action is a deletion, `useUndoable` holds the write for six seconds, so Undo
+cancels a request that was never sent rather than apologising for one that already landed.
+
 ## What ships today
 
 Version 0.1.0 is deliberately small. Everything listed is implemented, tested and measured;
 nothing is half-shipped.
 
-|                   | What it removes                                                                                                            | Size            |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| **`useAction`**   | The whole action lifecycle: synchronous duplicate guard, pending thresholds, abort, retry with backoff, announcement.      | 2.07 kB         |
-| **`useFailure`**  | `err.message` as an error UX. Ten failure kinds from whatever your API rejected with, plus a live `Retry-After` countdown. | included        |
-| **`<Announcer>`** | Silence. Two live regions, a de-duplicating queue, and the trick that makes a repeated message announce at all.            | 692 B           |
-| **Diagnostics**   | Guessing. Nine stable `UX####` codes; four are reported today.                                                             | 0 in production |
+|                   | What it removes                                                                                                                                | Size            |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **`useAction`**   | The whole action lifecycle: synchronous duplicate guard, pending thresholds, abort, retry with backoff, announcement.                          | 2.07 kB         |
+| **`useFailure`**  | `err.message` as an error UX. Ten failure kinds from whatever your API rejected with, plus a live `Retry-After` countdown.                     | included        |
+| **`useUndoable`** | The Undo that is a lie. A deferred write that survives navigation and unmount, coalesces repeats, and sends nothing at all if the user undoes. | 1.90 kB         |
+| **`<Announcer>`** | Silence. Two live regions, a de-duplicating queue, and the trick that makes a repeated message announce at all.                                | 692 B           |
+| **Diagnostics**   | Guessing. Nine stable `UX####` codes; four are reported today.                                                                                 | 0 in production |
 
-**Installed cost: 7.08 kB brotli, zero runtime dependencies.**
+**Installed cost: 8.25 kB brotli with everything retained, zero runtime dependencies.**
 
-Confirmation flows, undo windows, partial failure, selection descriptors and bulk actions are
+Confirmation flows, partial failure, selection descriptors and bulk actions are
 designed and on the [roadmap](https://abdulmanan69.github.io/unruffled/roadmap/).
 
 ## The part that is hard to copy

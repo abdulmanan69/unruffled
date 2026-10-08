@@ -1,0 +1,403 @@
+---
+/**
+ * Animation.
+ *
+ * The page exists mostly to explain an absence. There is no animation code in this library;
+ * what there is instead is a clock port, two thresholds and a reduced-motion read that
+ * defaults the right way round. Those three things are the whole subject.
+ */
+import DocPage from "../components/docs/DocPage.astro";
+import Section from "../components/docs/Section.astro";
+import Snippet from "../components/docs/Snippet.astro";
+import Demo from "../components/docs/Demo.astro";
+import Callout from "../components/docs/Callout.astro";
+import PropsTable from "../components/docs/PropsTable.astro";
+import { href } from "../lib/site";
+import { ReducedMotionDemo } from "../components/demos/index.tsx";
+import TimingTrace from "../components/TimingTrace.tsx";
+
+const clockPortCode = `/** Timers and the current instant. */
+export interface ClockPort {
+  /** Monotonic milliseconds. Only ever used for differences, never as a wall clock. */
+  readonly now: () => number;
+  /** Runs fn after ms. Dispose to cancel. */
+  readonly after: (ms: number, fn: () => void) => Disposer;
+  /** Runs fn on each animation frame until disposed, with milliseconds since the call. */
+  readonly frame: (fn: (elapsedMs: number) => void) => Disposer;
+}`;
+
+const reducedMotionCode = `// Nothing to enable. The hook reports the user's actual preference,
+// and the library treats true as "reduce" everywhere without being asked.
+const reduced = usePrefersReducedMotion();`;
+
+const countdownCode = `const TICK_MS = 100;
+const TICK_MS_REDUCED = 1000;
+
+// Inside the frame subscription: re-render only when the bucket changes.
+const granularity = reduced ? TICK_MS_REDUCED : TICK_MS;
+const bucket = Math.floor(Math.max(0, targetAt - ports.clock.now()) / granularity);
+if (bucket === lastBucket) return;`;
+
+const thresholdCode = `// The defaults, written out.
+const save = useAction(() => api.saveCustomer(form), {
+  pending: { delay: 150, min: 400 },
+});
+
+// A dense table where every cell is a write: no delay, short hold.
+const toggle = useAction(() => api.setFlag(row.id, next), {
+  pending: { delay: 0, min: 200 },
+});`;
+
+const cssCode = `/* The library sets the attributes. The motion is yours. */
+
+.btn {
+  transition:
+    opacity 120ms ease-out,
+    border-color 120ms ease-out;
+}
+
+/* Present only once the delay threshold has passed, and held for the
+   minimum duration. By the time this selector matches, the affordance
+   has already earned its place: no CSS transition-delay needed. */
+.btn[data-pending] {
+  opacity: 0.72;
+  cursor: progress;
+}
+
+/* aria-disabled, never disabled: the element is still focusable, so it
+   still needs a focus ring. */
+.btn[aria-disabled="true"]:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* The full lifecycle, not a boolean. */
+.btn[data-state="backoff"] {
+  border-color: var(--warning);
+}
+.btn[data-state="error"] {
+  border-color: var(--danger);
+}
+.btn[data-state="success"] {
+  border-color: var(--good);
+}`;
+
+const spinnerCssCode = `.spinner {
+  width: 0.85em;
+  height: 0.85em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Reduction, done properly: the glyph stops turning and stays on screen.
+   Hiding it would remove the information, which is not what the user asked for. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-top-color: currentColor;
+    opacity: 0.45;
+  }
+}`;
+
+const thresholds = [
+  {
+    name: "pending.delay",
+    type: "number",
+    default: "150",
+    description:
+      "Milliseconds of work before anything is shown. Below it, the action completes and the UI never changed.",
+    why: "A 60ms save that flashes a spinner reads as a glitch, not as feedback. Most cached or local-network responses land under this line.",
+  },
+  {
+    name: "pending.min",
+    type: "number",
+    default: "400",
+    description: "Milliseconds the affordance stays once it has appeared, even if the work finished sooner.",
+    why: "Without it, an action that resolves at 160ms shows a spinner for 10ms. That is a flicker, and a flicker reads as a bug rather than as progress.",
+  },
+];
+
+const states = [
+  {
+    name: "busy",
+    type: 'data-state="busy"',
+    description:
+      "Work is in flight. The affordance may or may not be visible yet: that is the delay threshold, tracked as context rather than as a separate state.",
+  },
+  {
+    name: "settling",
+    type: 'data-state="settling"',
+    description:
+      "The request has finished but the affordance has not been visible long enough. The result is held here until the minimum duration elapses.",
+  },
+  {
+    name: "backoff",
+    type: 'data-state="backoff"',
+    description:
+      'Waiting before an automatic retry. A real state rather than a gap, which is what lets a UI render "retrying in 3s" instead of appearing to hang.',
+  },
+];
+---
+
+<DocPage
+  title="Animation"
+  eyebrow="Concern"
+  path="animation"
+  lede="There is no animation library in here. There is one clock port, two thresholds and a reduced-motion preference that is respected without being asked. This page is about what that buys and what it leaves to you."
+  meta={[
+    { label: "Animation dependency", value: "none" },
+    { label: "Runtime dependencies", value: "zero" },
+    { label: "Countdown tick", value: "100ms, 1000ms reduced" },
+  ]}
+>
+  <Section id="no-animation-library" title="There is no animation library here">
+    <p>
+      Nothing in this library animates anything. No spring, no tween, no transform, no keyframes, no layout
+      projection. Both packages have zero runtime dependencies, so there is no animation library in the graph
+      either, and nothing to tree-shake out of it.
+    </p>
+    <p>
+      What exists instead is the clock port. Every timed behaviour in the library &mdash; the pending delay,
+      the minimum display duration, the retry backoff, the live countdown &mdash; goes through it, and nothing
+      captures a global <code>setTimeout</code> or
+      <code>requestAnimationFrame</code> at module scope.
+    </p>
+
+    <Snippet code={clockPortCode} lang="ts" name="packages/core/src/ports.ts" />
+
+    <p>
+      <code>frame</code> is the only continuous thing in the library, and one shared loop drives every live countdown
+      through it. A component with no countdown pending holds no subscription at all: the effect returns early when
+      there is no target, so an idle trigger costs nothing per frame.
+    </p>
+    <p>Three things follow from the port being an interface rather than a global.</p>
+    <ul>
+      <li>
+        <strong>Timing is deterministic in tests.</strong> A fake clock replaces the real one, so a 150&thinsp;ms
+        threshold is asserted by advancing a counter instead of sleeping. The suite does not flake, which is the
+        only reason timing this precise is maintainable at all.
+      </li>
+      <li>
+        <strong>It degrades rather than throwing.</strong> In a runtime with no animation frame source, core falls
+        back to a 100&thinsp;ms interval, so a countdown still advances in Node or in a worker.
+      </li>
+      <li>
+        <strong>The adapter can downgrade it.</strong> Consumers read a value, not a frame rate, which is what makes
+        the reduced-motion behaviour below possible without a second code path.
+      </li>
+    </ul>
+
+    <h3>What it costs</h3>
+    <p>
+      Nothing, which is the point. <code>@unruffled/react</code> and
+      <code>@unruffled/core</code> together are 7.08&thinsp;kB brotli with everything retained: the React layer
+      is 2.07&thinsp;kB of that, the core barrel 4.83&thinsp;kB, the machine runtime 1.49&thinsp;kB and the ports
+      454&thinsp;B. A spring solver is not in the budget because it is not in the library.
+    </p>
+    <Callout tone="note" title="Bring your own motion">
+      <p>
+        If you want springs, use a motion library. This one sets attributes and hands you the timing; it has
+        no opinion on your easing curve and does not compete for the job. The
+        <a href={href("theming")}>theming page</a> covers the attribute surface in full.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="reduced-motion" title="Reduced motion is the default">
+    <p>
+      <code>usePrefersReducedMotion</code> reports the user's preference, and the library treats
+      <code>true</code> as "reduce" everywhere. There is no flag to turn that on.
+    </p>
+    <Snippet code={reducedMotionCode} name="reduced motion" />
+    <p>
+      State that plainly against the alternative: the dominant animation library ships with reduction switched <em
+        >off</em
+      > and requires an explicit opt-in that most applications never discover. An accessibility default that has
+      to be found in the documentation is not a default; it is a feature with a discovery problem, and the users
+      it exists for are the ones who lose.
+    </p>
+    <p>Two further defects are common in this exact hook, and both are avoided here.</p>
+    <ul>
+      <li>
+        <strong>It is reactive.</strong> The widespread implementation reads
+        <code>matchMedia</code> once into state at mount. A user who turns the preference on mid-session, or who
+        drags the window to a display with different settings, keeps getting animation until a remount. This subscribes
+        to the media query, so the answer updates.
+      </li>
+      <li>
+        <strong>It is server-safe.</strong> Without <code>matchMedia</code> the answer is
+        <code>false</code>, which renders the motion-enabled markup and corrects itself on hydration. That
+        ordering is deliberate: it keeps the server output stable rather than guessing at a preference it
+        cannot read.
+      </li>
+    </ul>
+
+    <Demo
+      title="The preference, read live"
+      hint="Change it in your OS settings with this page open"
+      note="No reload. The value, the countdown granularity and the spinner all update from the media-query subscription."
+    >
+      <ReducedMotionDemo client:visible />
+    </Demo>
+  </Section>
+
+  <Section id="amplitude" title="Reduction means amplitude, not a kill switch">
+    <p>
+      The common reading of <code>prefers-reduced-motion</code> is "remove the moving thing". For a progress affordance
+      that is wrong, because the moving thing is carrying information.
+    </p>
+    <p>
+      Take the retry countdown. It is the one piece of UI a rate-limited user actually needs: how long until
+      this can work. "Snap instantly" and "animate fully" are both wrong answers. So under reduction the
+      countdown keeps counting and stays accurate &mdash; the bucket simply widens from 100&thinsp;ms to
+      1000&thinsp;ms, so the number updates once a second instead of ten times a second. It stops animating.
+      It does not stop informing.
+    </p>
+
+    <Snippet code={countdownCode} lang="ts" name="packages/react/src/adapter/useCountdown.ts" />
+
+    <p>Applied consistently, that gives three rules worth copying into your own CSS.</p>
+    <ol>
+      <li>A spinner stops turning. It stays on screen.</li>
+      <li>A countdown slows its tick. It keeps the correct number.</li>
+      <li>A state change loses its transition. It does not lose its colour or its label.</li>
+    </ol>
+    <p>
+      Freezing or hiding the countdown would withhold the one thing the user asked about, in the name of a
+      preference about motion. Reduction is an amplitude control, not a mute button.
+    </p>
+  </Section>
+
+  <Section id="thresholds" title="The thresholds as motion design">
+    <p>
+      A spinner is normally discussed as a styling question. It is a timing question, and two numbers decide
+      almost all of it.
+    </p>
+    <PropsTable rows={thresholds} nameHeading="Threshold" />
+    <p>
+      Together they define a window in which nothing happens visually, and a floor under how briefly anything
+      can appear. Under 150&thinsp;ms the user gets their result and the interface never moved, which is the
+      best possible outcome and the one a boolean
+      <code>isPending</code> cannot produce. Over it, whatever appeared is guaranteed at least 400&thinsp;ms on
+      screen, which is long enough to be perceived as feedback rather than noticed as a glitch.
+    </p>
+
+    <Demo
+      title="Where the thresholds fall"
+      hint="Press it, then try it again at a different latency"
+      note="The trace is real: it samples the machine through the clock port while the request runs. 700ms latency against a 150ms delay and a 400ms minimum."
+    >
+      <TimingTrace
+        client:visible
+        latencyMs={700}
+        windowMs={1200}
+        pendingDelayMs={150}
+        pendingMinMs={400}
+        buttonLabel="Save customer"
+      />
+    </Demo>
+
+    <p>
+      This needs more than a boolean in the machine, because "work is in flight" and "the affordance is on
+      screen" come apart in both directions. Three of the six states exist for exactly that.
+    </p>
+    <PropsTable rows={states} nameHeading="State" />
+    <p>
+      From the user's point of view none of the three has finished, so
+      <code>status</code> reports all of them as <code>pending</code> and
+      <code>aria-busy</code> is true throughout. <code>data-state</code> gives you the raw value when you want to
+      style the difference.
+    </p>
+
+    <Snippet code={thresholdCode} name="overriding the thresholds" />
+
+    <Callout tone="warning" title="Zero delay is a choice, not a shortcut">
+      <p>
+        <code>delay: 0</code> shows the affordance immediately, which is right for a dense table of instant toggles
+        where the row needs to look touched. It also brings back the flash on a fast response. Pair it with a short
+        <code>min</code> rather than dropping both.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="what-you-animate" title="What you animate yourself">
+    <p>
+      The library's entire contribution to your visuals is a set of attributes on your element. There is no
+      class name to match, no stylesheet to import, and no wrapper element.
+    </p>
+    <ul>
+      <li>
+        <code>data-pending</code> &mdash; present, with an empty value, while the affordance should render.
+      </li>
+      <li><code>data-state</code> &mdash; the raw machine state, one of the six.</li>
+      <li><code>data-attempt</code> &mdash; the attempt number from the second attempt onwards.</li>
+      <li>
+        <code>aria-busy</code> and <code>aria-disabled</code> &mdash; the accessibility surface, which doubles as
+        a selector.
+      </li>
+    </ul>
+
+    <Snippet code={cssCode} lang="css" name="your stylesheet" />
+
+    <p>
+      Note what is absent from that CSS: a <code>transition-delay</code> to stop the spinner flashing. You do not
+      need one, because by the time
+      <code>[data-pending]</code> matches, the 150&thinsp;ms threshold has already passed and the result is already
+      held for 400&thinsp;ms. The timing is in the machine, so the CSS can be naive. That is the division of labour
+      the library is arguing for.
+    </p>
+    <p>
+      The one rule to carry into your own motion: honour the preference in CSS too. The library handles its
+      own timing, but your keyframes are yours.
+    </p>
+
+    <Snippet code={spinnerCssCode} lang="css" name="your spinner" />
+  </Section>
+
+  <Section id="performance" title="Performance">
+    <p>
+      A live countdown is the easiest way to accidentally re-render a tree sixty times a second. Three
+      decisions keep it cheap.
+    </p>
+    <ul>
+      <li>
+        <strong>Renders are bucketed.</strong> The frame callback computes which 100&thinsp;ms bucket the remaining
+        time falls in and returns without doing anything if the bucket has not changed. A number that visibly changes
+        ten times a second costs about ten renders a second, not sixty. Under reduced motion the bucket is 1000&thinsp;ms,
+        so roughly one.
+      </li>
+      <li>
+        <strong>The subscription exists only while a countdown is pending.</strong> With no target there is no frame
+        subscription, so an idle or settled action is not in the loop at all. A table of two hundred rows with nothing
+        retrying holds zero frame callbacks.
+      </li>
+      <li>
+        <strong>State is a tick counter, not the value.</strong> The remaining time is computed during render, where
+        it is current by construction. The only <code>setState</code> is in the frame callback. Storing the value
+        in state would mean writing it from an effect and cascading a second render on every update.
+      </li>
+    </ul>
+    <p>
+      The machine itself holds no timers it is not using. Each timed behaviour is an effect of the state that
+      needs it, so leaving a state disposes its timer: <code>busy</code> owns the request and the delay timer, <code
+        >settling</code
+      > owns the hold timer,
+      <code>backoff</code> owns the retry timer. The fake clock exposes
+      <code>pending()</code> and <code>frames()</code> so the suite can assert that a torn-down machine leaves zero
+      of each, which is how that claim stays true rather than becoming aspirational.
+    </p>
+    <p>
+      One more consequence of the port: the effect that owns the request is scoped to the
+      <code>busy</code> state, and disposing it aborts. An unmount mid-request tears the request down rather than
+      leaving it to resolve into a component that is gone.
+    </p>
+  </Section>
+</DocPage>

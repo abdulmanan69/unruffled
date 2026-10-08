@@ -1,0 +1,380 @@
+---
+/**
+ * Installation.
+ *
+ * The page a sceptical reader opens second, after deciding the idea might be worth it. It
+ * has to answer three questions without being asked: what lands in my node_modules, what
+ * lands in my bundle, and what is the minimum wiring before anything works. The Announcer
+ * section is the one that matters, because it is the only mandatory step and the only one
+ * whose omission is silent to a sighted developer.
+ */
+import DocPage from "../components/docs/DocPage.astro";
+import Section from "../components/docs/Section.astro";
+import Snippet from "../components/docs/Snippet.astro";
+import Callout from "../components/docs/Callout.astro";
+import PropsTable from "../components/docs/PropsTable.astro";
+import { href } from "../lib/site";
+
+const pnpmInstall = `pnpm add @unruffled/react`;
+
+const npmInstall = `npm install @unruffled/react`;
+
+const yarnInstall = `yarn add @unruffled/react`;
+
+const announcerSetup = `import { Announcer } from "@unruffled/react";
+
+export function App() {
+  return (
+    <>
+      <Announcer />
+      <Router />
+    </>
+  );
+}`;
+
+const providerSetup = `import { Announcer, UnruffledProvider } from "@unruffled/react";
+
+export function App() {
+  return (
+    <UnruffledProvider
+      defaults={{
+        // A dense admin table wants the affordance immediately.
+        pending: { delay: 0, min: 0 },
+        retry: { attempts: 2 },
+        messages: { rateLimited: "Too many requests. Give it a moment." },
+      }}
+    >
+      <Announcer />
+      <Router />
+    </UnruffledProvider>
+  );
+}`;
+
+const verify = `import { Announcer, useAction } from "@unruffled/react";
+
+function SaveButton() {
+  const save = useAction(
+    (_args: void, signal: AbortSignal) =>
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 800);
+        signal.addEventListener("abort", () => clearTimeout(timer));
+      }),
+    { announce: { success: "Saved" } },
+  );
+
+  return (
+    <button {...save.triggerProps}>
+      {save.pending ? "Saving…" : "Save"}
+    </button>
+  );
+}
+
+export function Probe() {
+  return (
+    <>
+      <Announcer />
+      <SaveButton />
+    </>
+  );
+}`;
+
+const defaultsRows = [
+  {
+    name: "pending",
+    type: "Partial<PendingPolicy>",
+    default: "delay 150, min 400",
+    description:
+      "When the pending affordance appears and the shortest time it stays once shown. Merged under every call site, which can still override either number.",
+    why: "Two thresholds rather than one. A delay alone converts a flash into a flicker; a minimum alone makes every fast action feel slower than it is.",
+  },
+  {
+    name: "retry",
+    type: "RetryPolicy",
+    default: "none",
+    description:
+      "Number of automatic retries after the first attempt, and the backoff curve. Zero, or omitted, means manual retry only.",
+    why: "Off by default. Retrying a write the library cannot prove is idempotent is a decision only the application can make.",
+  },
+  {
+    name: "classify",
+    type: "(failure: NormalizedFailure) => FailureKind | undefined",
+    default: "none",
+    description:
+      "Remaps a normalised failure onto a different kind. Returning undefined keeps the default status mapping, so an override can special-case one status without restating the table.",
+    why: "One classifier for the application instead of a taxonomy that drifts from screen to screen.",
+  },
+  {
+    name: "messages",
+    type: "Partial<Record<FailureKind, string>>",
+    default: "built-in English copy",
+    description: "User-facing text per failure kind. Merged under the messages passed at a call site.",
+    why: "The taxonomy is the product; the wording is yours. Localising it must not mean reimplementing it.",
+  },
+  {
+    name: "announce",
+    type: "false",
+    default: "announcements on",
+    description:
+      "The only accepted value is false, which silences announcements application-wide. There is no true, because on is the default.",
+    why: "Silence is the opt-out rather than the default, which is the inverse of the ecosystem convention. The type has no true to set so the option cannot be mistaken for a feature flag you forgot to turn on.",
+  },
+];
+
+const providerRows = [
+  {
+    name: "defaults",
+    type: "UnruffledDefaults",
+    default: "empty",
+    description: "The behavioural defaults in the table above.",
+  },
+  {
+    name: "ports",
+    type: "Partial<Ports>",
+    default: "DOM ports",
+    description:
+      "Replaces individual capabilities: clock, scheduler, storage, navigation, doc, announcer, transport, logger. Supplied ports are merged over the DOM set, so you can swap one and keep the rest.",
+    why: "Mostly for tests and documentation harnesses. @unruffled/testing ships deterministic implementations of the five that decide a test outcome: clock, announcer, storage, navigation and doc.",
+  },
+  {
+    name: "root",
+    type: "PortRoot",
+    default: "the main document",
+    description:
+      "The owning document or shadow root for listener registration and focus reads. Set it once here for an app rendered inside a shadow root or a secondary window.",
+    why: "Reaching for the global document is the bug that makes libraries fail inside shadow DOM and popped-out windows. Passing the root makes that structural rather than remembered.",
+  },
+];
+---
+
+<DocPage
+  title="Installation"
+  eyebrow="Start"
+  path="installation"
+  lede="One package, no dependencies, no stylesheet. The only mandatory wiring is a single live region near the root of the app."
+  description="How to install @unruffled/react: package manager commands, React and browser requirements, mounting the Announcer, the optional provider, and the measured bundle cost."
+  meta={[
+    { label: "Install", value: "@unruffled/react" },
+    { label: "Installed", value: "7.08 kB brotli" },
+    { label: "Dependencies", value: "0" },
+  ]}
+>
+  <Section id="what-you-install" title="What you install">
+    <p>There are two published packages. You normally install one of them.</p>
+    <ul>
+      <li>
+        <strong>@unruffled/react</strong> — the hooks and prop-getters: <code>useAction</code>,
+        <code>useFailure</code>, <code>useAnnounce</code>, the <code>Announcer</code> component,
+        <code>UnruffledProvider</code>, <code>usePrefersReducedMotion</code>, and the DOM port adapter. This
+        is the package you add.
+      </li>
+      <li>
+        <strong>@unruffled/core</strong> — the framework-agnostic state machines, the error taxonomy, the diagnostics
+        bus and the port interfaces. It touches no DOM API and imports no framework. It is already a dependency
+        of @unruffled/react, so installing the React package brings it in.
+      </li>
+    </ul>
+    <p>
+      Install @unruffled/core directly only when you are consuming the machines without React: a Vue or Svelte
+      adapter, a vanilla binding, or server-side classification of an error payload with
+      <code>normalizeError</code>. Nothing is gained by adding both to a React app.
+    </p>
+  </Section>
+
+  <Section id="install" title="Install it">
+    <Snippet code={pnpmInstall} lang="bash" name="pnpm" />
+    <Snippet code={npmInstall} lang="bash" name="npm" />
+    <Snippet code={yarnInstall} lang="bash" name="yarn" />
+    <p>
+      There is nothing to import for styling. The library renders no visual except two clipped live regions,
+      so there is no stylesheet, no CSS variable contract and no build-step integration.
+    </p>
+  </Section>
+
+  <Section id="requirements" title="Requirements">
+    <h3>React 18 or 19, as a peer</h3>
+    <p>
+      The peer range is <code>^18.0.0 || ^19.0.0</code>. React is not bundled and not duplicated. React 18 is
+      the floor because the library builds on <code>useSyncExternalStore</code>, which is how the
+      reduced-motion preference and the machine snapshot are read without tearing under concurrent rendering.
+    </p>
+
+    <h3>ESM only</h3>
+    <p>
+      Both packages are <code>"type": "module"</code> and their export maps declare no <code>require</code>
+      condition. There is no CommonJS build in 0.1.0 and a <code>require("@unruffled/react")</code> will fail. That
+      is a decision, not an omission: a dual build doubles the published surface, and the two copies disagree about
+      module identity, which breaks the process-wide key registry that makes the duplicate-submit guard work across
+      the tree. One format means one registry.
+    </p>
+    <p>
+      Every bundler the React ecosystem currently uses resolves ESM from node_modules without configuration.
+      If you load the package in Node directly, Node 20.19 or newer is declared in <code>engines</code>.
+    </p>
+
+    <h3>TypeScript is optional, and is most of the value</h3>
+    <p>
+      The packages run fine from plain JavaScript. But the types are the part that stops you from writing the
+      wrong thing: <code>disabled</code> on the trigger props is typed as <code>never</code>,
+      <code>announce</code> accepts <code>false</code> and has no <code>true</code> to set, and the failure kinds
+      are a closed union, so a switch over them is exhaustively checked. Declaration files ship for every entry
+      point and subpath.
+    </p>
+
+    <h3>Browsers</h3>
+    <p>
+      Chrome and Edge 111+, Firefox 115+, Safari 17+. Safari 17 is the floor, and the reason is one line: the
+      scheduler port calls <code>requestIdleCallback</code>, which Safari did not ship until 17. Nothing else
+      in the library needs anything newer.
+    </p>
+    <Callout tone="note" title="If you must support Safari 16">
+      <p>
+        Pass a <code>scheduler</code> port on the provider whose <code>idle</code> defers with a timeout instead.
+        Every capability the library uses is injected as a replaceable port, which is why a browser floor is a few
+        lines at the root rather than a fork.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="announcer" title="Mount the Announcer">
+    <p>
+      This is the one required step. Render <code>&lt;Announcer /&gt;</code> once, near the root, inside your providers.
+    </p>
+    <Snippet code={announcerSetup} name="src/App.tsx" />
+    <p>
+      It is the only component in the library, and it renders nothing you can see: two clipped
+      <code>div</code> elements, one <code>aria-live="polite"</code> for confirmations and one
+      <code>role="alert"</code> with <code>aria-live="assertive"</code> for failures. There are two because switching
+      a single region's politeness at runtime is unreliable across screen readers, so the message is routed to the
+      right region rather than the region being reconfigured. Both are
+      <code>aria-atomic="true"</code>, so a replaced message is read in full rather than diffed word by word.
+    </p>
+    <p>
+      No call site opts in. Announcement is on by default throughout the library and every machine writes
+      through the announcer port, so mounting the region is the whole of the integration. Render it twice and
+      nothing breaks: the second registration replaces the first.
+    </p>
+    <Callout tone="warning" title="Without it, outcomes are silent">
+      <p>
+        The announcer port's default implementation reports that it is not live, and writes go nowhere. A
+        sighted user still sees the label change, so this failure is invisible to the developer who introduced
+        it. The library therefore checks: when a pending affordance was visible for longer than 400&thinsp;ms
+        and no live region was mounted, rule UX1003 fires in development with the elapsed duration and your
+        call site. It fires on evidence that the wait happened, not on the possibility that it might.
+      </p>
+    </Callout>
+    <p>
+      Put it inside the providers it will render under, not at the document root. It needs nothing from
+      context itself, but keeping it with the rest of the tree is one less thing to move later. See <a
+        href={href("components/announcer")}>Announcer</a
+      > for the queueing, de-duplication and rate limiting behind the port.
+    </p>
+  </Section>
+
+  <Section id="provider" title="The provider is optional">
+    <p>
+      Every hook works with no provider mounted. That is deliberate: a library that only behaves correctly
+      once a provider is wired has made its first-run experience the thing most likely to be got wrong. Reach
+      for
+      <code>UnruffledProvider</code> when you want one of three things.
+    </p>
+    <ol>
+      <li>
+        <strong>Timing policy in one place.</strong> A dense table may want no pending delay at all. Setting that
+        at each call site is how inconsistency gets into a product.
+      </li>
+      <li>
+        <strong>One failure classifier and one message catalogue.</strong> Rather than a taxonomy that drifts between
+        screens.
+      </li>
+      <li>
+        <strong>Root scoping.</strong> An app inside a shadow root or a secondary window declares its root once.
+      </li>
+    </ol>
+    <Snippet code={providerSetup} name="src/App.tsx" />
+
+    <h3>UnruffledDefaults</h3>
+    <p>
+      Five fields, all behavioural. There is nothing here about colour, radius, spacing or typography, because
+      the library emits no visual and so has no appearance to configure.
+    </p>
+    <PropsTable rows={defaultsRows} nameHeading="Field" />
+
+    <h3>Provider props</h3>
+    <PropsTable rows={providerRows} nameHeading="Prop" />
+    <p>
+      Defaults sit underneath call sites, never over them. A <code>pending</code> object passed to
+      <code>useAction</code> is merged field by field over the provider's, so overriding
+      <code>delay</code> at one call site keeps the inherited <code>min</code>.
+    </p>
+  </Section>
+
+  <Section id="bundle" title="What gets added to your bundle">
+    <p>Measured brotli sizes from the published builds, with React excluded because you already have it.</p>
+    <ul>
+      <li>
+        <strong>7.08 kB</strong> — @unruffled/react and @unruffled/core together, with every export retained. This
+        is the honest ceiling: nothing shaken out, nothing deferred.
+      </li>
+      <li><strong>2.07 kB</strong> — the React layer alone, with core counted separately.</li>
+      <li><strong>692 B</strong> — the Announcer and its live-region queue on their own.</li>
+      <li><strong>4.83 kB</strong> — the @unruffled/core barrel.</li>
+      <li><strong>1.49 kB</strong> — the machine runtime inside that.</li>
+      <li><strong>454 B</strong> — the port definitions and their platform-neutral fallbacks.</li>
+    </ul>
+    <p>
+      Both packages declare <code>"sideEffects": false</code> and tree-shake, and both publish per-primitive subpaths
+      (<code>@unruffled/react/action</code>, <code>/failure</code>, <code>/announce</code>) so you can prove
+      that in a bundle report rather than take it on trust.
+    </p>
+    <p>
+      Neither package has a runtime dependency. React is the only peer. The diagnostics layer — the nine-rule
+      table, the formatter and the four call sites in the shipped action machine — is behind a build-time flag
+      that the default build replaces with
+      <code>false</code>, so the production bundle carries no diagnostics bytes at all. Your dev server
+      resolves the <code>development</code> export condition and gets the version that talks to you.
+    </p>
+  </Section>
+
+  <Section id="verify" title="Verify it works">
+    <p>Render this somewhere and press the button. It uses no network.</p>
+    <Snippet code={verify} name="src/Probe.tsx" />
+    <p>What you should observe, in order:</p>
+    <ul>
+      <li>
+        For the first 150&thinsp;ms the label does not change. <code>save.pending</code> is false even though work
+        has started, which is what stops a fast action from flashing.
+      </li>
+      <li>
+        The button keeps focus and stays in the tab order for the whole run. It reports
+        <code>aria-disabled</code> and <code>aria-busy</code>, and it is never <code>disabled</code>.
+      </li>
+      <li>
+        A second press while it is running does nothing and does not queue. Inspect the element and
+        <code>data-state</code> moves <code>idle</code> to <code>busy</code> to <code>success</code>: the
+        affordance appears at 150&thinsp;ms and has been visible for 650&thinsp;ms by the time the request
+        settles, which is past the 400&thinsp;ms minimum, so <code>settling</code> is skipped entirely. Drop the
+        latency below 550&thinsp;ms and you will see it.
+      </li>
+      <li>
+        The result persists. <code>resetAfterMs</code> is undefined by default, so a settled action stays settled
+        until you trigger it again or call <code>reset</code>.
+      </li>
+      <li>
+        The polite live region receives "Saved". With a screen reader on you will hear it; without one,
+        inspect the first clipped <code>div</code> the Announcer rendered.
+      </li>
+    </ul>
+    <Callout tone="good" title="Or skip the file">
+      <p>
+        The <a href={href("playground")}>playground</a> drives all six machine states by hand, with the clock and
+        the latency under your control, so you can watch the 150&thinsp;ms and 400&thinsp;ms thresholds decide what
+        the user sees before you install anything. The behaviour is covered by 50 tests against a fake clock, which
+        is why these numbers are assertions rather than aspirations.
+      </p>
+    </Callout>
+    <p>
+      Next: <a href={href("getting-started")}>Getting started</a> replaces a hand-rolled async button line by line
+      and names what each line was hiding.
+    </p>
+  </Section>
+</DocPage>

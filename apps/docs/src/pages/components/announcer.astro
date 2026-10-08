@@ -1,0 +1,496 @@
+---
+/**
+ * Announcer — the live-region page.
+ *
+ * Every number on this page (150ms spacing, 500ms duplicate window, 20-message cap) is read
+ * from `adapter/liveRegion.ts`. The clipped-style rationale is read from `announce.tsx`.
+ */
+import DocPage from "../../components/docs/DocPage.astro";
+import Section from "../../components/docs/Section.astro";
+import Snippet from "../../components/docs/Snippet.astro";
+import Demo from "../../components/docs/Demo.astro";
+import Callout from "../../components/docs/Callout.astro";
+import PropsTable from "../../components/docs/PropsTable.astro";
+import Mistake from "../../components/docs/Mistake.astro";
+import { href } from "../../lib/site";
+import { AnnouncerDemo } from "../../components/demos/index.tsx";
+
+const mountOnce = `import { Announcer } from "@unruffled/react";
+
+export function App() {
+  return (
+    <>
+      <Announcer />
+      <Routes />
+    </>
+  );
+}
+
+// That is the whole setup. Announcement is on by default throughout the
+// library and every machine writes through the announcer port, so no call
+// site has to opt in and no provider is required.`;
+
+const withProvider = `// If you already have a provider, it makes no difference where the
+// Announcer sits relative to it. The regions register themselves in a
+// module-level registry rather than through context.
+<UnruffledProvider defaults={{ pending: { delay: 0 } }}>
+  <Announcer />
+  <App />
+</UnruffledProvider>
+
+// An id prefix, only if your own code needs to target the elements.
+<Announcer id="app" />
+// renders ids "app-polite" and "app-assertive"`;
+
+const rendered = `<!-- polite -->
+<div aria-live="polite" aria-atomic="true" style="position:absolute;width:1px;height:1px;
+     margin:-1px;padding:0;border:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap"></div>
+
+<!-- assertive -->
+<div role="alert" aria-live="assertive" aria-atomic="true" style="…same…"></div>`;
+
+const queueCode = `announce("Customer saved");                     // polite, queued at the back
+announce("Save failed. Try again.", "assertive"); // jumps to the front
+
+// Writes are spaced 150ms apart. Two messages written in the same frame
+// make screen readers drop one, so the queue drains on a timer instead.
+
+announce("Customer saved");
+announce("Customer saved"); // dropped: identical inside the 500ms window
+
+// 600ms later
+announce("Customer saved"); // announced again, because it is a new event`;
+
+const dedupeCode = `// Why a repeat announces at all.
+//
+// A live region only speaks when its content CHANGES. Writing the same
+// string twice is silent, which is why "Saved" is heard the first time and
+// never again. Each write alternates a trailing zero-width space:
+//
+//   write 1  ->  "Customer saved\\u200B"
+//   write 2  ->  "Customer saved"
+//   write 3  ->  "Customer saved\\u200B"
+//
+// The content differs every time, so the region fires every time, and the
+// zero-width space is not read aloud.`;
+
+const announceApi = `import { useAnnounce } from "@unruffled/react";
+
+function FilterBar() {
+  const { announce, live } = useAnnounce();
+
+  const clear = () => {
+    setFilters({});
+    // The library announces action outcomes for you. This is for things
+    // only the application knows about.
+    announce(\`Filters cleared, \${results.length} results\`);
+  };
+
+  // live is false until <Announcer /> has mounted. It is here to be asserted
+  // on in a test, not to be branched on in production code.
+  if (import.meta.env.DEV && !live) console.warn("No live region mounted");
+
+  return (
+    <button type="button" onClick={clear}>
+      Clear filters
+    </button>
+  );
+}`;
+
+const testingCode = `import { createTestPorts } from "@unruffled/testing";
+import { UnruffledProvider } from "@unruffled/react";
+
+const ports = createTestPorts();
+
+render(
+  <UnruffledProvider ports={ports}>
+    <SaveCustomer />
+  </UnruffledProvider>,
+);
+
+await user.click(screen.getByRole("button", { name: "Save" }));
+ports.clock.advance(1000);
+
+// Exactly one announcement, with this text, at this politeness. The two
+// bugs live regions always have are saying nothing and saying everything
+// twice, and both of them fail this assertion.
+expect(ports.announcer.announcements).toEqual([
+  { message: "Customer saved", politeness: "polite" },
+]);
+
+// Failures must interrupt, so assert the politeness and not just the text.
+expect(ports.announcer.at("assertive")).toHaveLength(1);
+expect(ports.announcer.at("polite")).toHaveLength(0);`;
+
+const testingUx1003 = `// Drive the no-live-region path, which is what rule UX1003 reports.
+const ports = createTestPorts({ live: false });
+
+// Or flip it mid-test.
+ports.announcer.setLive(false);
+ports.announcer.clear();`;
+
+const badNotMounted = `// Every hook in the app announces. Nothing is mounted to hear it.
+export function App() {
+  return <Routes />;
+}
+
+// Nothing throws. Nothing is logged in production. A screen-reader user
+// presses Save, waits four seconds, and is told nothing at all.`;
+
+const goodNotMounted = `export function App() {
+  return (
+    <>
+      <Announcer />
+      <Routes />
+    </>
+  );
+}
+
+// In development, rule UX1003 reports this: "Pending state lasted longer
+// than the announcement threshold with no live region mounted". It fires
+// on the real condition, not on the mere possibility, because the library
+// can ask the announcer port whether anything is listening.`;
+
+const badDoubleSpoken = `// The toast is already in the accessibility tree with role="status",
+// and the library announced the same sentence through the live region.
+const save = useAction(submit, { announce: { success: "Customer saved" } });
+
+useEffect(() => {
+  if (save.status === "success") toast.success("Customer saved");
+}, [save.status]);
+
+// Heard twice. Sometimes three times, if the toast also has aria-live.`;
+
+const goodDoubleSpoken = `// Either keep the toast, which your toast library already exposes to
+// assistive technology, and turn the library's announcement off,
+const save = useAction(submit, { announce: false });
+
+useEffect(() => {
+  if (save.status === "success") toast.success("Customer saved");
+}, [save.status]);
+
+// or let the library announce and render the toast purely visually,
+// with whatever its own API calls that.
+const save = useAction(submit, { announce: { success: "Customer saved" } });
+
+// One surface per event. Decide which one; do not do both.`;
+
+const badAssertive = `// A routine confirmation that interrupts whatever the user was reading.
+announce("Customer saved", "assertive");
+announce("Filters cleared", "assertive");
+announce("Copied to clipboard", "assertive");
+
+// Assertive also jumps the queue, so a run of these reorders itself
+// ahead of messages that were already waiting.`;
+
+const goodAssertive = `// Polite waits for a natural pause. "Customer saved" arriving a moment
+// later is better than it cutting across a sentence the user is reading.
+announce("Customer saved");
+announce("Filters cleared");
+
+// Assertive is for the thing the user has to know because they have
+// already moved on and are about to act on a false assumption.
+announce("Save failed. Your changes were not stored.", "assertive");`;
+
+const doubleSpokenWhy =
+  'Toast libraries generally put role="status" or aria-live on the toast element, so a toast is ' +
+  "itself an announcement. Pair it with the library's and the user hears the sentence twice, " +
+  "150ms apart, which reads as a stutter rather than as emphasis.";
+
+const announcerProps = [
+  {
+    name: "id",
+    type: "string",
+    default: "no id",
+    description:
+      'Prefix for the two rendered regions. With id="app" they render as app-polite and app-assertive.',
+    why: "Defaults to no id because nothing in the library looks these up by id, and an unprefixed id would risk colliding with the host application.",
+  },
+];
+
+const useAnnounceApi = [
+  {
+    name: "announce",
+    type: '(message: string, politeness?: "polite" | "assertive") => void',
+    default: 'politeness defaults to "polite"',
+    description:
+      "Queues a message. Trimmed first; an empty or whitespace-only message is dropped. De-duplicated and rate-limited, and assertive messages jump the queue.",
+    why: "Polite is the default because the common case is a confirmation, and a confirmation that interrupts is worse than one that waits.",
+  },
+  {
+    name: "live",
+    type: "boolean",
+    description: "Whether a live region is currently mounted and will be read. Read at render time.",
+    why: "Exposed so a test can assert that announcements were actually deliverable rather than assuming it, and so the library's own diagnostic can tell a correct announcement from one made into a void.",
+  },
+];
+---
+
+<DocPage
+  title="Announcer"
+  eyebrow="Primitive"
+  path="components/announcer"
+  lede="Two live regions, mounted once, that every machine in the library writes through. It is the only component here that renders anything, and nothing it renders is ever seen."
+  description="The unruffled Announcer renders a polite and an assertive live region, with a queue that spaces writes 150ms apart, drops duplicates inside 500ms, and makes a repeated message announce at all."
+  meta={[
+    { label: "Import", value: "@unruffled/react" },
+    { label: "Cost", value: "692 B brotli" },
+    { label: "Setup", value: "mount once" },
+  ]}
+>
+  <Section id="description" title="Description">
+    <p>
+      Screen-reader feedback for async work is the part of this that is usually missing entirely. A sighted
+      user sees the spinner and the toast. A screen-reader user presses a button, hears nothing for four
+      seconds, and then hears nothing again. <code>Announcer</code> is the single mount that fixes that for every
+      primitive in the library at once: announcement is on by default, every machine writes through the announcer
+      port, and no call site opts in.
+    </p>
+    <p>It renders two regions, not one, and routes messages between them.</p>
+    <ul>
+      <li>
+        <strong>Polite</strong>, with <code>aria-live="polite"</code>. Waits for a pause in what the user is
+        already hearing. Right for confirmations: "Customer saved" arriving a moment later is better than it
+        interrupting someone mid-sentence.
+      </li>
+      <li>
+        <strong>Assertive</strong>, with <code>role="alert"</code> and <code>aria-live="assertive"</code>.
+        Interrupts. Right for failures: a user who has already moved on needs to know the save did not happen
+        before they act on the assumption that it did.
+      </li>
+    </ul>
+    <p>
+      One region with its <code>aria-live</code> attribute swapped at runtime would be smaller and would not work.
+      Changing the politeness of an existing live region is unreliable across screen readers: some read the attribute
+      once when the region is first seen, so a later change has no effect, and some re-announce the region's current
+      content when the attribute changes. The reliable arrangement is two regions created with fixed politeness,
+      with the <em>message</em> routed rather than the region reconfigured. That is why there are two.
+    </p>
+    <Snippet code={rendered} lang="html" name="what it renders" />
+    <p>
+      Both regions are <code>aria-atomic="true"</code>, so a replaced message is read in full rather than
+      diffed word by word against the one before it. Without it, replacing "3 of 12 saved" with "4 of 12
+      saved" can be read as just "4".
+    </p>
+  </Section>
+
+  <Section id="demo" title="Live demo">
+    <Demo
+      title="The real live region"
+      hint="Turn on a screen reader, or watch the log"
+      note="This writes to the same regions the rest of the site uses. The panel is a mirror of what was written, so sighted readers can see that it happened; the announcement itself is the live region, not the panel."
+    >
+      <AnnouncerDemo client:visible />
+    </Demo>
+  </Section>
+
+  <Section id="usage" title="Basic usage">
+    <p>Mount it once, near the root. That is the only step.</p>
+    <Snippet code={mountOnce} name="App.tsx" />
+    <p>
+      Rendering it twice is harmless but pointless: the second registration replaces the first, and
+      announcements go to whichever regions are currently mounted. Unmounting it unregisters them, after which
+      announcements queue and <code>live</code> reports <code>false</code>.
+    </p>
+    <Snippet code={withProvider} name="placement" />
+    <Callout tone="note" title="Registration happens in a layout effect">
+      <p>
+        The regions register before paint rather than in a passive effect. An action that starts and settles
+        in the same commit as the mount would otherwise announce into a void and trip{" "}
+        <a href={href("diagnostics/ux1003")}>UX1003</a> on first load, which is the one time a developer is least
+        likely to believe the warning.
+      </p>
+    </Callout>
+    <p>
+      Messages announced before the regions mount are not lost. They sit in the queue, and registering the
+      regions drains it.
+    </p>
+  </Section>
+
+  <Section id="queue" title="How the queue works">
+    <p>
+      Naive live regions have exactly two failure modes and both are common: saying nothing, and saying
+      everything twice. The queue exists for those two, and it is four rules.
+    </p>
+    <ol>
+      <li>
+        <strong>Writes are spaced 150ms apart.</strong> Two messages written into a region in the same frame make
+        screen readers drop one. The queue writes, waits, then writes the next.
+      </li>
+      <li>
+        <strong>An identical message inside 500ms is a duplicate.</strong> It is dropped rather than queued. The
+        comparison is against the last message actually written, so a burst of five identical announcements produces
+        one. The same message 600ms later is a new event and is announced.
+      </li>
+      <li>
+        <strong>Assertive jumps the queue.</strong> Polite messages are pushed to the back; assertive messages are
+        put at the front. A failure the user needs to know about should not wait behind a backlog of routine confirmations.
+      </li>
+      <li>
+        <strong>The queue is capped at 20.</strong> A runaway render loop cannot grow it without limit. At the cap
+        the queue is truncated to its first 20 entries, so the front always survives — including an assertive message
+        that has just jumped there — and the most recently queued message is the one discarded.
+      </li>
+    </ol>
+    <Snippet code={queueCode} lang="ts" name="the four rules" />
+    <p>
+      The fifth rule is the one that is least obvious and matters most. A live region only announces when its
+      content <em>changes</em>. Writing the same string into it twice is completely silent, which is why so
+      many hand-rolled live regions announce "Saved" the first time and then never again, and why that bug
+      survives testing: the first attempt always works.
+    </p>
+    <Snippet code={dedupeCode} lang="ts" name="why a repeat is heard" />
+    <Callout tone="warning" title="The queue runs on the real timer">
+      <p>
+        The 150ms spacing uses a real <code>setTimeout</code>, not the clock port, because it is a property of
+        the DOM region rather than of a machine. A fake clock does not drive it. That is the reason{" "}
+        <a href="#testing">tests assert on the announcer port</a> rather than on the text content of the region.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="hidden" title="Why it is visually hidden with clip-path">
+    <p>
+      A live region has to be two things at once: present in the accessibility tree, and absent from the
+      visual layout. Most ways of hiding an element fail the first condition, silently.
+    </p>
+    <ul>
+      <li>
+        <code>display: none</code>, <code>visibility: hidden</code> and the <code>hidden</code> attribute all remove
+        the element from the accessibility tree. The region still exists in the DOM, its content still updates,
+        and nothing is ever announced.
+      </li>
+      <li>
+        <code>width: 0; height: 0</code> keeps it in the tree, but some screen readers skip zero-sized elements.
+      </li>
+      <li>
+        A 1x1 element clipped with <code>clip-path: inset(50%)</code>, pulled out of flow and with overflow
+        hidden, is the arrangement that is reliably announced. <code>white-space: nowrap</code> stops a long message
+        from reflowing the page through the 1px box.
+      </li>
+    </ul>
+    <p>
+      That style is applied inline, and it is the only inline style in the library. It is semantics rather
+      than design, so it is not yours to theme. It is also not in a stylesheet because{" "}
+      <a href={href("theming")}>the library ships no CSS at all</a>, and a live region that depends on the
+      consumer having imported a stylesheet is a live region that is sometimes visible and sometimes silent,
+      depending on bundler configuration.
+    </p>
+    <Callout tone="danger" title="Do not restyle the regions">
+      <p>
+        There is no reason to, and every available change breaks them. If you need to find them from your own
+        code, use the <code>id</code> prop.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="use-announce" title="useAnnounce">
+    <p>
+      Most code should not need this. Outcomes of actions are announced by their own machines, which is the
+      point of mounting the component. Reach for <code>useAnnounce</code> when the application itself has something
+      to say that no machine knows about.
+    </p>
+    <Snippet code={announceApi} name="FilterBar.tsx" />
+    <h3>Returns</h3>
+    <PropsTable nameHeading="Property" rows={useAnnounceApi} />
+    <h3>Announcer props</h3>
+    <PropsTable nameHeading="Prop" rows={announcerProps} />
+    <Callout tone="note" title="useAnnounce writes to the region directly">
+      <p>
+        It writes to the registered DOM regions rather than going through the announcer port. In an
+        application that makes no difference, because the DOM port writes to the same queue, so spacing and
+        de-duplication apply to both. In a test with substituted ports it does: a recording announcer captures
+        what the machines announced, not what <code>useAnnounce</code> announced.
+      </p>
+    </Callout>
+    <p>
+      To silence the library's own announcements, set <code>announce: false</code> on a single action or in{
+        " "
+      }
+      <code>UnruffledProvider</code> defaults. Doing it application-wide is strongly discouraged; the default is
+      the inverse of the ecosystem's for a reason.
+    </p>
+  </Section>
+
+  <Section id="testing" title="Testing announcements">
+    <p>
+      "Exactly one polite announcement, with this text" should be an ordinary assertion, and{" "}
+      <code>@unruffled/testing</code> exists so that it is. <code>createTestPorts</code> gives you a recording announcer
+      alongside a fake clock, so the whole sequence is driven by advancing a counter rather than by sleeping.
+    </p>
+    <Snippet code={testingCode} lang="tsx" name="announcer.test.tsx" />
+    <p>
+      <code>announcements</code> is the full list in order, as{" "}
+      <code>&#123; message, politeness &#125;</code> records. <code>at(politeness)</code> filters it, which is how
+      you assert that a failure interrupted rather than merely that it was mentioned.{" "}
+      <code>clear()</code> empties the list between phases of a longer test.
+    </p>
+    <p>
+      <code>setLive(false)</code>, or <code>live: false</code> at construction, simulates the region being absent.
+      That is the condition rule UX1003 reports on, and it is worth one test of its own: a diagnostic nobody has
+      ever seen fire is a diagnostic nobody trusts.
+    </p>
+    <Snippet code={testingUx1003} lang="ts" name="the absent-region path" />
+    <Callout tone="good" title="Assert the count, not just the presence">
+      <p>
+        Both live-region bugs are count bugs. <code>toHaveLength(1)</code> catches the silent one and the duplicate
+        one; <code>toBeTruthy()</code> on the text catches neither.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="accessibility" title="Accessibility notes">
+    <p>
+      Of the 50 tests in the repository, the announcement ones are the ones worth reading, because this is the
+      behaviour with no visual tell. A broken spinner is reported in a day. A silent live region is reported
+      never.
+    </p>
+    <ul>
+      <li>
+        <strong>Politeness is a routing decision, not a severity label.</strong> Ask what the user is doing right
+        now. If interrupting them is better than them continuing on a false assumption, it is assertive. Otherwise
+        it is polite. Most things are polite.
+      </li>
+      <li>
+        <strong>An announcement is not a substitute for a visible state.</strong> It is the parallel channel. The
+        trigger still carries <code>aria-busy</code> and keeps its place in the tab order, which is why{" "}
+        <a href={href("components/use-action")}>useAction</a> never disables the button.
+      </li>
+      <li>
+        <strong>Do not announce what is already announced.</strong> A failure banner built from{" "}
+        <code>summaryProps</code> has <code>role="alert"</code> and speaks on appearance. The library announced
+        the same failure. Choose one.
+      </li>
+      <li>
+        <strong>Backgrounded tabs.</strong> The doc port reports whether the owning document is hidden, which is
+        what lets a machine decide not to announce into a tab the user is not looking at.
+      </li>
+      <li>
+        <strong>Shadow roots and secondary windows.</strong> The regions are plain elements in your tree, so they
+        live wherever you mount them. Listener and focus scoping is handled by the{" "}
+        <code>root</code> option on the provider, not here.
+      </li>
+    </ul>
+  </Section>
+
+  <Section id="mistakes" title="Common mistakes">
+    <Mistake
+      title="Not mounting it"
+      why="This is the most common failure and the quietest. Nothing throws, nothing is logged in production, and the hooks go on calling announce into a registry with nowhere to write. Every assistive-technology benefit the library claims is off until this one element is in the tree."
+      bad={badNotMounted}
+      good={goodNotMounted}
+    />
+    <Mistake
+      title="Announcing the same thing as a visible toast"
+      why={doubleSpokenWhy}
+      bad={badDoubleSpoken}
+      good={goodDoubleSpoken}
+    />
+    <Mistake
+      title="Using assertive for routine confirmations"
+      why="Assertive interrupts whatever is being read and jumps ahead of everything already queued. Used for confirmations it makes the interface hostile, trains the user to tune the region out, and reorders the queue so that the one message that genuinely needed to interrupt arrives behind three that did not."
+      bad={badAssertive}
+      good={goodAssertive}
+    />
+  </Section>
+</DocPage>

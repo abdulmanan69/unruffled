@@ -1,0 +1,1200 @@
+---
+/**
+ * The complete 0.1.0 surface.
+ *
+ * Every row here was taken from a declaration, not from memory. The export lists come from
+ * the three `src/index.ts` files, the option tables from
+ * `packages/core/src/machines/action/types.ts` and `packages/react/src/action.ts`, the
+ * failure taxonomy from `packages/core/src/shared/normalizeError.ts`, the ports from
+ * `packages/core/src/ports.ts`, and the subpaths and budgets from each `package.json`.
+ *
+ * Anything not listed on this page does not exist yet. The roadmap page says what is coming
+ * and in what order.
+ */
+import DocPage from "../components/docs/DocPage.astro";
+import Section from "../components/docs/Section.astro";
+import Snippet from "../components/docs/Snippet.astro";
+import Callout from "../components/docs/Callout.astro";
+import PropsTable from "../components/docs/PropsTable.astro";
+import { href } from "../lib/site";
+
+const reactExports = [
+  {
+    name: "useAction",
+    type: "<T, A = void>(run, options?) => UseActionResult<T, A>",
+    description:
+      "The action lifecycle: guard, pending thresholds, abort, classification, retry, announcement.",
+  },
+  {
+    name: "useFailure",
+    type: "(error: unknown, options?) => FailureApi | null",
+    description: "Normalises any rejection into a shape you can branch on, and tracks its retry window.",
+  },
+  {
+    name: "Announcer",
+    type: "(props: AnnouncerProps) => ReactNode",
+    description: "The two live regions. Mount once near the root; nothing else is required.",
+  },
+  {
+    name: "useAnnounce",
+    type: "() => UseAnnounceResult",
+    description: "Writes to the live region directly, for messages the library does not already make.",
+  },
+  {
+    name: "UnruffledProvider",
+    type: "(props: UnruffledProviderProps) => ReactNode",
+    description: "Application-wide behavioural defaults and port overrides. Optional.",
+  },
+  {
+    name: "useUnruffledDefaults",
+    type: "() => UnruffledDefaults",
+    description: "The provider's defaults, or an empty object when there is no provider.",
+  },
+  {
+    name: "usePrefersReducedMotion",
+    type: "() => boolean",
+    description: "The user's live reduced-motion preference. Subscribed, not read once at mount.",
+  },
+  {
+    name: "prefersReducedMotion",
+    type: "() => boolean",
+    description: "The same answer outside a component. Not reactive.",
+  },
+  {
+    name: "useMachine",
+    type: "(definition, props, ports) => [Snapshot, Service]",
+    description: "Advanced. Drives any core machine from React.",
+  },
+  {
+    name: "useResolvedPorts",
+    type: "(base, overrides?, root?) => Ports",
+    description: "Advanced. Builds the effective port set: explicit override, then provider, then DOM.",
+  },
+  {
+    name: "useCountdown",
+    type: "(targetAt, ports, reduced) => number | null",
+    description: "Advanced. A bucketed live countdown to a clock reading.",
+  },
+  {
+    name: "useIsomorphicLayoutEffect",
+    type: "typeof useLayoutEffect",
+    description: "Advanced. useLayoutEffect in the browser, useEffect on the server.",
+  },
+  {
+    name: "createDomPorts",
+    type: "(options?: DomPortOptions) => Ports",
+    description: "Advanced. DOM-backed ports, scoped to a document or a shadow root.",
+  },
+];
+
+const actionOptions = [
+  {
+    name: "key",
+    type: "string",
+    default: "none",
+    description:
+      "Resource identity, for example customer:42. Actions sharing a key are serialised across the whole application.",
+    why: "A boolean on one hook cannot express that a toolbar button and a row button write the same record. A key can.",
+  },
+  {
+    name: "registry",
+    type: "KeyRegistry",
+    default: "globalKeyRegistry",
+    description:
+      "The registry backing key. Pass a fresh one per test case so a held lock cannot leak between cases.",
+  },
+  {
+    name: "guard",
+    type: '"single-flight" | "allow-concurrent"',
+    default: '"single-flight"',
+    description: "Whether an overlapping trigger is dropped or allowed through.",
+    why: "allow-concurrent is only right for genuinely additive work, such as adding separate items to a cart.",
+  },
+  {
+    name: "pending",
+    type: "Partial<PendingPolicy>",
+    default: "{ delay: 150, min: 400 }",
+    description:
+      "delay suppresses the affordance entirely for fast actions. min keeps it up long enough to be perceived once shown.",
+    why: "A 60 ms save that flashes a spinner reads as a glitch. A 160 ms save without min shows one for 10 ms, which is a flicker.",
+  },
+  {
+    name: "announce",
+    type: "false | ActionAnnouncements",
+    default: "on",
+    description:
+      "Strings read to assistive technology: pending, success, error. success defaults to “Done.” and error to the normalised failure message.",
+    why: "Announcement is on by default and silence is the opt-out, which is the inverse of the ecosystem default.",
+  },
+  {
+    name: "focus",
+    type: '"restore" | "none"',
+    default: '"restore"',
+    description:
+      "Whether focus is restored to the trigger if it was lost while the action ran. Only fires when the active element is null, which happens when the surrounding subtree was replaced mid-flight.",
+  },
+  {
+    name: "resetAfterMs",
+    type: "number | false",
+    default: "undefined",
+    description: "Milliseconds after which a settled action returns to idle.",
+    why: "Undefined by default, so a result persists. A confirmation that clears itself is a choice, not a default.",
+  },
+  {
+    name: "retry",
+    type: "RetryPolicy",
+    default: "none",
+    description:
+      "attempts is the number of automatic retries after the first attempt. Zero or absent means manual retry only. backoff is a BackoffPolicy.",
+    why: "An automatic retry only fires when the normalised failure says canRetry, so a 403 is never retried.",
+  },
+  {
+    name: "destructive",
+    type: "boolean",
+    default: "false",
+    description: "Marks the action as irreversible. Reports UX1001 unless reversible is also set.",
+  },
+  {
+    name: "reversible",
+    type: "boolean",
+    default: "false",
+    description:
+      "Records that a recovery path exists, which satisfies UX1001. Intended to be set by useConfirm and useUndoable, neither of which has shipped.",
+  },
+  {
+    name: "classify",
+    type: "(failure: NormalizedFailure) => FailureKind | undefined",
+    default: "none",
+    description:
+      "Overrides the status-to-kind mapping. Returning undefined keeps the default, so one status can be special-cased without restating the table.",
+  },
+  {
+    name: "messages",
+    type: "Partial<Record<FailureKind, string>>",
+    default: "built-in English",
+    description: "User-facing failure copy, so the taxonomy can be localised without re-implementing it.",
+  },
+  {
+    name: "online",
+    type: "() => boolean",
+    default: "navigator.onLine",
+    description:
+      "Whether the client has a network. A function, read at classification time, so an offline failure is labelled offline rather than reported as a generic network error.",
+  },
+  {
+    name: "onSuccess",
+    type: "(value: T) => void",
+    default: "none",
+    description: "Called on success, before onSettled.",
+  },
+  {
+    name: "onError",
+    type: "(failure: NormalizedFailure) => void",
+    default: "none",
+    description: "Called with the normalised failure. Its absence is what reports UX1004.",
+  },
+  { name: "onSettled", type: "() => void", default: "none", description: "Called after either outcome." },
+  {
+    name: "ports",
+    type: "Partial<Ports>",
+    default: "provider, then DOM",
+    description: "Replaces individual ports for this hook. Mostly for tests and documentation harnesses.",
+  },
+  {
+    name: "root",
+    type: "Document | ShadowRoot",
+    default: "ambient document",
+    description: "Scopes listeners and focus reads to a shadow root or a secondary window.",
+  },
+];
+
+const actionResult = [
+  {
+    name: "state",
+    type: '"idle" | "busy" | "settling" | "backoff" | "success" | "error"',
+    description: "The raw machine state. Six values, because the timing concerns need to be distinguishable.",
+  },
+  {
+    name: "status",
+    type: '"idle" | "pending" | "success" | "error"',
+    description: "The four states a user can distinguish. settling and backoff both read as pending.",
+  },
+  {
+    name: "pending",
+    type: "boolean",
+    description:
+      "Whether the affordance should render. False for the first 150 ms of a request, and still true for up to 400 ms after it resolved.",
+  },
+  {
+    name: "busy",
+    type: "boolean",
+    description:
+      "Whether work is in flight, settling or backing off. This is what drives aria-busy, not the spinner.",
+  },
+  { name: "data", type: "T | null", description: "The last successful value." },
+  { name: "failure", type: "NormalizedFailure | null", description: "The last failure, classified." },
+  {
+    name: "attempt",
+    type: "number",
+    description: "0 when idle, 1 during the first attempt, higher while retrying.",
+  },
+  {
+    name: "canRetry",
+    type: "boolean",
+    description: "Whether offering a retry affordance is honest for the current failure.",
+  },
+  {
+    name: "retryAt",
+    type: "number | null",
+    description:
+      "Clock reading at which an automatic retry fires. A reading, not a duration, because a duration is stale the moment it is read.",
+  },
+  {
+    name: "retryInMs",
+    type: "number | null",
+    description:
+      "Live milliseconds until that automatic retry. Updated from the frame port, bucketed to 100 ms, or to 1000 ms under reduced motion.",
+  },
+  {
+    name: "trigger",
+    type: "(args: A) => void",
+    description:
+      "Starts the action. Dropped while the machine is busy, settling or backing off, and dropped from idle when another holder has the key.",
+  },
+  { name: "retry", type: "() => void", description: "Re-runs the failed attempt with the same arguments." },
+  { name: "reset", type: "() => void", description: "Clears the outcome and returns to idle." },
+  {
+    name: "cancel",
+    type: "() => void",
+    description: "Aborts the request in flight and returns to idle without reporting a failure.",
+  },
+  {
+    name: "attrs",
+    type: "ActionAttrs",
+    description:
+      "The five attributes, without the handlers. Use this when the element is not the trigger, such as a form submit button.",
+  },
+  { name: "triggerProps", type: "TriggerProps", description: "Spread straight onto the trigger element." },
+  {
+    name: "getTriggerProps",
+    type: "(overrides?: TriggerPropOverrides<A>) => TriggerProps",
+    description:
+      "The same props with your own args, handlers and ref composed in. Your handler runs after the library's, and only when the action was not suppressed.",
+  },
+];
+
+const triggerProps = [
+  {
+    name: "type",
+    type: '"button"',
+    description: "Always. A trigger inside a form that should still submit wants attrs instead.",
+  },
+  {
+    name: "aria-busy",
+    type: "boolean",
+    description:
+      "True while work is in flight, settling or waiting to retry: the busy, settling and backoff states.",
+  },
+  {
+    name: "aria-disabled",
+    type: "true | undefined",
+    description:
+      "True while activation is suppressed. Omitted rather than set to false, because aria-disabled=“false” is noise in the accessibility tree.",
+  },
+  {
+    name: "data-pending",
+    type: '"" | undefined',
+    description: "Present while the pending affordance should render. Style with [data-pending].",
+  },
+  {
+    name: "data-state",
+    type: "ActionStateValue",
+    description: "The raw machine state, for styling the full lifecycle.",
+  },
+  {
+    name: "data-attempt",
+    type: "string | undefined",
+    description: "Attempt number from the second attempt onwards, for retry copy.",
+  },
+  {
+    name: "onClick",
+    type: "(event: MouseEvent<HTMLElement>) => void",
+    description:
+      "Triggers the action. While suppressed it calls preventDefault and stopPropagation, so a parent row handler does not read the refused click as a selection.",
+  },
+  {
+    name: "onKeyDown",
+    type: "(event: KeyboardEvent<HTMLElement>) => void",
+    description:
+      "Suppresses Enter and Space while busy. Synthesises activation only for a non-button element, because a native button already turns both into a click.",
+  },
+  {
+    name: "ref",
+    type: "(element: HTMLElement | null) => void",
+    description: "Records the element so focus can be restored if the subtree was replaced mid-flight.",
+  },
+  {
+    name: "disabled",
+    type: "never",
+    description:
+      "Not provided, and not accepted as an override. A disabled element leaves the tab order, so disabling a button at the moment it is pressed throws focus to the top of the document.",
+  },
+];
+
+const failureOptions = [
+  {
+    name: "classify",
+    type: "(failure: NormalizedFailure) => FailureKind | undefined",
+    default: "provider, then none",
+    description: "Overrides the mapping for this call site. Returning undefined keeps the default.",
+  },
+  {
+    name: "messages",
+    type: "Partial<Record<FailureKind, string>>",
+    default: "provider, then built-in",
+    description: "Merged over the provider's catalogue, which is merged over the built-in English copy.",
+  },
+  {
+    name: "online",
+    type: "boolean",
+    default: "navigator.onLine",
+    description:
+      "A boolean here, not a function as in useAction, because normalisation happens once rather than per attempt. false short-circuits straight to the offline kind.",
+  },
+  {
+    name: "ports",
+    type: "Partial<Ports>",
+    default: "provider, then DOM",
+    description:
+      "Replaces individual ports. The clock is the one that matters: it dates the failure and drives the countdown.",
+  },
+  {
+    name: "root",
+    type: "Document | ShadowRoot",
+    default: "ambient document",
+    description: "Scopes the port set to a shadow root or a secondary window.",
+  },
+];
+
+const failureResult = [
+  {
+    name: "kind",
+    type: "FailureKind",
+    description: "One of the ten kinds below. This is the value an interface should branch on.",
+  },
+  {
+    name: "message",
+    type: "string",
+    description: "Short, user-facing, no internals. Safe inline or in a toast.",
+  },
+  {
+    name: "detail",
+    type: "string | undefined",
+    description:
+      "Technical text for a collapsed disclosure. Never shown by default. Carried through verbatim from the server.",
+  },
+  { name: "status", type: "number | undefined", description: "HTTP status, when one was found." },
+  {
+    name: "retryAfterMs",
+    type: "number | undefined",
+    description:
+      "The stated delay, parsed from Retry-After in either of its two forms, delta-seconds or an HTTP date.",
+  },
+  {
+    name: "fields",
+    type: "readonly FieldFailure[] | undefined",
+    description: "Field-scoped messages, each with a dotted path. Present for validation.",
+  },
+  {
+    name: "canRetry",
+    type: "boolean",
+    description:
+      "Whether a retry affordance would be honest. False for aborted, auth, forbidden, missing, validation and terminal.",
+  },
+  { name: "raw", type: "unknown", description: "The original value, for logging. Never rendered." },
+  {
+    name: "retryInMs",
+    type: "number | null",
+    description:
+      "Live milliseconds until a retry could succeed, measured from the moment the failure arrived rather than from whenever the component rendered.",
+  },
+  {
+    name: "canRetryNow",
+    type: "boolean",
+    description: "canRetry and the stated delay having elapsed. This is the one to put a button behind.",
+  },
+  {
+    name: "summaryProps",
+    type: '{ role: "alert"; "data-kind": FailureKind }',
+    description:
+      "Props for a short inline summary. role=“alert” announces on appearance, so it needs no live region of its own.",
+  },
+];
+
+const failureKinds = [
+  {
+    name: "aborted",
+    type: "—",
+    default: "no",
+    description:
+      "We cancelled it ourselves: an AbortError, an ERR_CANCELED code, or a __CANCEL__ marker. Render nothing; the user did not ask for this to be reported.",
+  },
+  {
+    name: "offline",
+    type: "online: false",
+    default: "yes",
+    description: "No network. A retry is worth offering, but not automatically.",
+  },
+  {
+    name: "auth",
+    type: "401",
+    default: "no",
+    description: "The session is gone. The recovery action is to sign in, not to retry.",
+  },
+  {
+    name: "forbidden",
+    type: "403",
+    default: "no",
+    description: "Retrying is pointless. The recovery action is to request access or change account.",
+  },
+  {
+    name: "missing",
+    type: "404, 410",
+    default: "no",
+    description: "The thing is not there. The recovery action is navigation.",
+  },
+  {
+    name: "conflict",
+    type: "409, 412",
+    default: "yes",
+    description: "Someone else changed it. The recovery action is to reload and merge.",
+  },
+  {
+    name: "validation",
+    type: "422, or 400 with fields",
+    default: "no",
+    description:
+      "Belongs on the form, never in a toast. A 400 with no field errors is terminal instead, because there is nothing for the user to act on.",
+  },
+  {
+    name: "rateLimited",
+    type: "429",
+    default: "yes",
+    description: "A retry is possible, but only after the stated delay. Pair it with canRetryNow.",
+  },
+  {
+    name: "retryable",
+    type: "408, 425, 500, 502, 503, 504, 507, 509, any 5xx",
+    default: "yes",
+    description:
+      "Safe to offer an immediate retry. A fetch TypeError with no status also lands here when no online value was supplied.",
+  },
+  {
+    name: "terminal",
+    type: "anything else",
+    default: "no",
+    description: "Classified, but nothing above fits. Report it and offer support, not retry.",
+  },
+];
+
+const defaultMessagesCode = `// The built-in catalogue. Override any subset through \`messages\`, on the
+// hook or on the provider. @unruffled/intl will ship translations of this.
+{
+  aborted:     "Cancelled.",
+  offline:     "You appear to be offline.",
+  auth:        "Your session has expired. Sign in to continue.",
+  forbidden:   "You do not have permission to do that.",
+  missing:     "That item no longer exists.",
+  conflict:    "Someone else changed this. Reload to see the latest version.",
+  validation:  "Some details need fixing.",
+  rateLimited: "Too many requests. Try again shortly.",
+  retryable:   "That did not go through. Try again.",
+  terminal:    "Something went wrong.",
+}`;
+
+const announcerCode = `import { Announcer } from "@unruffled/react";
+
+export function App({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      {children}
+      {/* Once. A second one replaces the first's registration. */}
+      <Announcer />
+    </>
+  );
+}`;
+
+const announcerMarkupCode = `<!-- What Announcer renders. Both regions are clipped, never hidden:
+     display:none, visibility:hidden and the hidden attribute all remove
+     an element from the accessibility tree and make the region silent. -->
+<div aria-live="polite" aria-atomic="true" style="…clip-path: inset(50%)…" />
+<div role="alert" aria-live="assertive" aria-atomic="true" style="…" />`;
+
+const announceCode = `const { announce, live } = useAnnounce();
+
+// Politeness defaults to "polite". "assertive" interrupts and is for failures.
+announce("Filters cleared, 240 results");
+
+// \`live\` is what lets a test assert that announcements were deliverable
+// rather than assuming it.
+expect(live).toBe(true);`;
+
+const providerDefaults = [
+  {
+    name: "pending",
+    type: "Partial<PendingPolicy>",
+    default: "{ delay: 150, min: 400 }",
+    description: "Pending affordance timing. A hook's own pending is merged over this.",
+  },
+  { name: "retry", type: "RetryPolicy", default: "none", description: "Default automatic retry policy." },
+  {
+    name: "classify",
+    type: "(failure: NormalizedFailure) => FailureKind | undefined",
+    default: "none",
+    description: "One classifier for the application, rather than a taxonomy that drifts between screens.",
+  },
+  {
+    name: "messages",
+    type: "Partial<Record<FailureKind, string>>",
+    default: "built-in English",
+    description: "One message catalogue. @unruffled/intl will ship catalogues for this.",
+  },
+  {
+    name: "announce",
+    type: "false",
+    default: "on",
+    description:
+      "Silences announcements application-wide. Strongly discouraged, and the type accepts nothing but false.",
+  },
+];
+
+const providerProps = [
+  { name: "children", type: "ReactNode", description: "The tree." },
+  {
+    name: "defaults",
+    type: "UnruffledDefaults",
+    default: "{}",
+    description: "Behavioural defaults merged underneath every call site.",
+  },
+  {
+    name: "ports",
+    type: "Partial<Ports>",
+    default: "DOM ports",
+    description:
+      "Replaces individual ports for the whole tree. Mostly useful in tests and in documentation harnesses.",
+  },
+  {
+    name: "root",
+    type: "Document | ShadowRoot",
+    default: "ambient document",
+    description:
+      "Owning document or shadow root for listeners and focus reads. Set it here once rather than at every hook.",
+  },
+];
+
+const advanced = [
+  {
+    name: "useMachine",
+    type: "(definition: MachineDefinition, props: P, ports: Ports) => readonly [Snapshot, Service]",
+    description:
+      "Drives a core machine from React. Props are replaced on every committed render, in a layout effect, which is what removes the stale-closure hazard. A Strict Mode remount is survived by deferring the stop a microtask and cancelling it if a mount follows.",
+  },
+  {
+    name: "useResolvedPorts",
+    type: "(base: Ports | null, overrides?: Partial<Ports>, root?: PortRoot) => Ports",
+    description:
+      "Resolution order is explicit override, then provider, then DOM. Memoised on the override identity, because a new port object means a new service.",
+  },
+  {
+    name: "useCountdown",
+    type: "(targetAt: number | null, ports: Ports, reduced: boolean) => number | null",
+    description:
+      "Takes a clock reading, not a duration. Subscribes to the frame port only while a countdown is pending, and re-renders per 100 ms bucket rather than per frame. Under reduced motion the bucket widens to 1000 ms; the number stays accurate.",
+  },
+  {
+    name: "createDomPorts",
+    type: "(options?: { root?: Document | ShadowRoot }) => Ports",
+    description:
+      "The only file in the library that touches a global. activeElement descends through shadow roots, because document.activeElement reports the shadow host and would silently restore focus to the wrong element. Storage is wrapped so a sandboxed frame or Safari private browsing loses a preference instead of crashing the page.",
+  },
+  {
+    name: "useIsomorphicLayoutEffect",
+    type: "typeof useLayoutEffect",
+    description:
+      "useLayoutEffect in the browser, useEffect where there is no document. Exported because an adapter built on useMachine needs the same trick.",
+  },
+];
+
+const coreMachineExports = [
+  {
+    name: "createMachine",
+    type: "(definition) => MachineDefinition",
+    description:
+      "Declares a machine. Returns its argument unchanged; it exists so the four type parameters are fixed once, at the definition site.",
+  },
+  {
+    name: "createService",
+    type: "(definition, options: ServiceOptions<P>) => Service",
+    description:
+      "Runs a machine. Takes props, an optional partial port set, and an optional onTransition callback that reports every attempt, taken or not.",
+  },
+  {
+    name: "matches",
+    type: "(snapshot, ...values) => boolean",
+    description: "True when the snapshot is in any of the given states.",
+  },
+  {
+    name: "hasTag",
+    type: "(snapshot, tag) => boolean",
+    description: "True when the snapshot carries the tag. The action machine tags busy, settled and failed.",
+  },
+  {
+    name: "createActionMachine",
+    type: "<T, A>() => MachineDefinition",
+    description: "The action lifecycle definition. Returns a fresh object, so a host must memoise it.",
+  },
+  {
+    name: "connectAction",
+    type: "(snapshot, send) => ActionApi<T, A>",
+    description:
+      "Derives the view-facing shape from a snapshot. Framework-neutral: the React adapter wraps attrs into props and attaches handlers.",
+  },
+];
+
+const corePortExports = [
+  {
+    name: "ClockPort",
+    type: "now, after, frame",
+    description:
+      "The current instant and timers. Deliberately not Date.now and not the global setTimeout: both are why timed UI behaviour is normally untestable. One shared frame loop drives every countdown in the library, which is why there is no animation dependency.",
+  },
+  {
+    name: "SchedulerPort",
+    type: "microtask, idle",
+    description:
+      "Deferral that is not time-based. Used to coalesce burst transitions and for non-urgent reconciliation.",
+  },
+  {
+    name: "StoragePort",
+    type: "get, set, remove",
+    description: "Durable key-value storage, synchronous by contract. A failing implementation returns null.",
+  },
+  {
+    name: "NavigationPort",
+    type: "onLeave, block, beacon",
+    description:
+      "Leaving the page or the route. This is what will make a deferred write safe: beacon is the only transport that survives an unloading document.",
+  },
+  {
+    name: "DocPort",
+    type: "activeElement, listen, isHidden",
+    description:
+      "The owning document or shadow root. Every global listener and focus read goes through here, so a component inside a shadow root or a popped-out window behaves correctly without special-casing.",
+  },
+  {
+    name: "AnnouncerPort",
+    type: "announce, live",
+    description:
+      "The final write to a live region. live() is what lets UX1003 distinguish announced correctly from announced into a void.",
+  },
+  {
+    name: "TransportPort",
+    type: "run",
+    description:
+      "Abortable request execution. Machines never call fetch; they hand over a function that receives an AbortSignal.",
+  },
+  {
+    name: "LoggerPort",
+    type: "emit",
+    description: "Sink for diagnostics. Nothing calls it in a production build.",
+  },
+];
+
+const coreOtherExports = [
+  {
+    name: "normalizeError",
+    type: "(raw: unknown, options?: NormalizeOptions) => NormalizedFailure",
+    description:
+      "The taxonomy, as a pure function. Never throws: an input it cannot read at all becomes terminal, which is the honest answer rather than a crash inside error handling.",
+  },
+  {
+    name: "isAbort",
+    type: "(raw: unknown) => boolean",
+    description: "True for an AbortError, an ERR_CANCELED code, or a __CANCEL__ marker.",
+  },
+  {
+    name: "computeBackoff",
+    type: "(attempt, policy?, random?) => number",
+    description:
+      "Full jitter across the range, which is the variant that decorrelates clients rather than merely perturbing them. random is injectable so a test can assert exact values.",
+  },
+  {
+    name: "DEFAULT_BACKOFF",
+    type: "Required<BackoffPolicy>",
+    description:
+      "{ baseMs: 500, factor: 2, maxMs: 30000, jitter: 0.5 }. Jitter is on by default, because without it every client that failed together retries together.",
+  },
+  {
+    name: "parseRetryAfter",
+    type: "(value: string | null | undefined, nowMs: number) => number | undefined",
+    description: "Both forms the header allows. A date in the past means retry now, not a negative wait.",
+  },
+  {
+    name: "createKeyRegistry",
+    type: "() => KeyRegistry",
+    description:
+      "acquire, isHeld, size, clear. A fresh registry per test case keeps a leaked lock from making the next case look like a duplicate submit.",
+  },
+  {
+    name: "globalKeyRegistry",
+    type: "KeyRegistry",
+    description:
+      "The process-wide registry. This is what makes a key serialise two components in two different subtrees.",
+  },
+  {
+    name: "defaultPorts",
+    type: "() => Ports",
+    description:
+      "Platform-neutral fallbacks. clock and transport are real, because setTimeout and AbortController exist everywhere; everything DOM-shaped is inert, so core degrades to doing nothing rather than throwing.",
+  },
+  {
+    name: "resolvePorts",
+    type: "(partial?: Partial<Ports>) => Ports",
+    description: "Fills the gaps in a partial bundle.",
+  },
+  { name: "DEFAULT_PENDING", type: "PendingPolicy", description: "{ delay: 150, min: 400 }." },
+  {
+    name: "ANNOUNCE_THRESHOLD_MS",
+    type: "number",
+    description:
+      "400. Visible pending time past which silence is a defect, which is the condition UX1003 reports.",
+  },
+];
+
+const diagnosticsExports = [
+  {
+    name: "diagnostics",
+    type: "DiagnosticsBus",
+    description:
+      "The process-wide bus: report, subscribe, reset, suppress, history. A singleton rather than a provider value, so devtools can attach without the consumer threading anything through the tree.",
+  },
+  {
+    name: "createDiagnosticsBus",
+    type: "() => DiagnosticsBus",
+    description: "An isolated bus. One per test case, so de-duplication memory does not leak between them.",
+  },
+  {
+    name: "RULES",
+    type: "Readonly<Record<DiagnosticCode, DiagnosticRule>>",
+    description:
+      "The nine rules, each with a title, the user-facing detail, the smallest fix, a severity, whether it is statically decidable, and a docs URL.",
+  },
+  {
+    name: "formatDiagnostic",
+    type: "(event: DiagnosticEvent) => string",
+    description:
+      "The multi-line console message. Lives in core so the ESLint plugin and the test matcher produce identical wording.",
+  },
+  {
+    name: "DiagnosticCode",
+    type: '"UX1001" … "UX1009"',
+    description:
+      "Permanent public API. A rule may be reworded or its detection improved, but a code is never reassigned and never recycled.",
+  },
+];
+
+const testingExports = [
+  {
+    name: "createTestPorts",
+    type: "(options?: TestPortOptions) => TestPorts",
+    description:
+      "A full deterministic bundle: fake clock, recording announcer, memory storage, scripted navigation, fake doc. Options are startMs, live and storage. scheduler.microtask stays a real microtask, because machines use it for coalescing rather than for timing.",
+  },
+  {
+    name: "createFakeClock",
+    type: "(startMs?: number) => FakeClock",
+    description:
+      "advance(ms) fires every timer that becomes due, in order, reporting each timer's own firing time from now() so elapsed-time maths inside a machine stays correct. Also flush(), pending(), frames() and a settable frameInterval, which defaults to 16 ms.",
+  },
+  {
+    name: "flushMicrotasks",
+    type: "() => Promise<void>",
+    description:
+      "Lets queued promise callbacks run. Needed between advancing the clock and asserting, because a resolving request sends its event from a microtask.",
+  },
+  {
+    name: "createRecordingAnnouncer",
+    type: "(live?: boolean) => RecordingAnnouncer",
+    description:
+      "announcements, at(politeness), setLive(live), clear(). This is how “exactly one announcement reached the live region” becomes an ordinary assertion.",
+  },
+  {
+    name: "createScriptedNavigation",
+    type: "() => ScriptedNavigation",
+    description:
+      "leave(reason), attemptExit() reporting whether a blocker ran and which decision the consumer took, a beacons log, and a beaconAvailable switch for exercising the synchronous fallback.",
+  },
+  {
+    name: "createFakeDoc",
+    type: "() => FakeDoc",
+    description:
+      "setActiveElement, setHidden, dispatch(type, event) and listenerCount(type). A machine that cleaned up correctly leaves zero listeners.",
+  },
+  {
+    name: "createMemoryStorage",
+    type: "(initial?: Record<string, string>) => MemoryStorage",
+    description: "A StoragePort with its entries Map exposed.",
+  },
+  {
+    name: "createFocusTarget",
+    type: "(name: string) => SpyFocusTarget",
+    description: "A FocusTarget that counts focus calls.",
+  },
+];
+
+const testCode = `import { createTestPorts, flushMicrotasks } from "@unruffled/testing";
+
+test("no spinner before 150ms", async () => {
+  const ports = createTestPorts();
+  const { result } = renderHook(() =>
+    useAction(() => resolveAfter(900), { ports }),
+  );
+
+  act(() => result.current.trigger());
+  act(() => ports.clock.advance(149));
+  expect(result.current.pending).toBe(false);
+
+  act(() => ports.clock.advance(1));
+  expect(result.current.pending).toBe(true);
+
+  act(() => ports.clock.advance(751));
+  await flushMicrotasks();
+  expect(ports.announcer.at("polite")).toHaveLength(1);
+});`;
+
+const subpaths = [
+  {
+    name: "@unruffled/react",
+    type: "barrel",
+    default: "7.08 kB",
+    description:
+      "Everything in the React layer plus everything it pulls from core, with nothing shaken out. This is the honest upper bound.",
+  },
+  {
+    name: "@unruffled/react/action",
+    type: "useAction",
+    default: "2.07 kB",
+    description:
+      "The React layer alone, with core excluded from the measurement. The subpath exists so you can prove the barrel tree-shakes in your own bundle report, not because the barrel fails to.",
+  },
+  {
+    name: "@unruffled/react/failure",
+    type: "useFailure",
+    default: "—",
+    description: "Normalisation and the retry window, without the action machine.",
+  },
+  {
+    name: "@unruffled/react/announce",
+    type: "Announcer, useAnnounce",
+    default: "692 B",
+    description:
+      "The two live regions and the queue. The cheapest thing in the library and the one with the largest effect.",
+  },
+  { name: "@unruffled/core", type: "barrel", default: "4.83 kB", description: "All core exports retained." },
+  {
+    name: "@unruffled/core/machine",
+    type: "runtime only",
+    default: "1.49 kB",
+    description:
+      "createMachine, createService, matches, hasTag. What a Vue or Svelte adapter would build on.",
+  },
+  {
+    name: "@unruffled/core/ports",
+    type: "fallbacks",
+    default: "454 B",
+    description: "defaultPorts and resolvePorts.",
+  },
+  {
+    name: "@unruffled/core/diagnostics",
+    type: "dev only",
+    default: "0 B shipped",
+    description:
+      "Not re-exported from the barrel, deliberately: a re-export keeps the module alive no matter what __DEV__ stripped from the call sites, and the rule table is about 2.5 kB of English prose.",
+  },
+  {
+    name: "@unruffled/testing",
+    type: "dev only",
+    default: "0 B shipped",
+    description: "A devDependency. Nothing in an application bundle imports it.",
+  },
+];
+---
+
+<DocPage
+  title="API"
+  eyebrow="Reference"
+  path="api"
+  lede="Everything 0.1.0 exports, with every option, every return value and the reasoning behind each default. Nothing on this page is planned: if it is here, it ships."
+  description="Complete API reference for unruffled 0.1.0: useAction, useFailure, Announcer, useAnnounce, UnruffledProvider, usePrefersReducedMotion, the core machine runtime, the eight ports, the nine diagnostics and the testing harness."
+  meta={[
+    { label: "Version", value: "0.1.0" },
+    { label: "React + core", value: "7.08 kB brotli" },
+    { label: "Tests", value: "50" },
+  ]}
+>
+  <Section id="surface" title="The whole surface">
+    <p>
+      Three published packages. No third-party runtime dependency in any of them:
+      <code>@unruffled/react</code> depends on <code>@unruffled/core</code> and on nothing else, and React is a
+      peer dependency at <code>^18</code> or <code>^19</code>. Node 20.19 or newer, ESM only.
+    </p>
+
+    <PropsTable rows={reactExports} nameHeading="@unruffled/react" />
+
+    <p>
+      The last five are marked advanced below. They exist so you can build your own primitive on the same
+      machine runtime, not because a normal call site needs them.
+    </p>
+
+    <Callout tone="warning" title="If a hook is not in that table, it does not exist">
+      <p>
+        <code>useConfirm</code>, <code>useUndoable</code>, <code>useDataState</code>,
+        <code>useSelection</code>, <code>useBulkAction</code>, <code>useRowState</code>,
+        <code>usePartial</code>, <code>useServerErrors</code>, <code>useDirtyGuard</code> and
+        <code>useGate</code> are named in the diagnostics and on the
+        <a href={href("roadmap")}>roadmap</a>. None of them has shipped. Five of the nine rules name a fix you
+        cannot apply yet, and only <code>UX1001</code> to <code>UX1004</code> are reported at all today, because
+        the action machine is the only machine shipped. That is a known and deliberate state of this release.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="use-action" title="useAction">
+    <p>
+      <code>useAction&lt;T, A = void&gt;(run, options?)</code>. <code>run</code> receives the trigger arguments
+      and an <code>AbortSignal</code>, and is replaced on every host render, so reading fresh state inside it
+      is safe. The long-form page is
+      <a href={href("components/use-action")}>here</a>; this is the table.
+    </p>
+
+    <h3>Options</h3>
+    <PropsTable rows={actionOptions} />
+
+    <h3>Result</h3>
+    <PropsTable rows={actionResult} nameHeading="Value" />
+
+    <h3>triggerProps</h3>
+    <p>
+      <code>getTriggerProps</code> accepts <code>args</code>, <code>onClick</code>,
+      <code>onKeyDown</code> and <code>ref</code>. It accepts <code>disabled</code> only as
+      <code>never</code>, which is a type error at the call site rather than a runtime surprise.
+    </p>
+    <PropsTable rows={triggerProps} nameHeading="Prop" />
+  </Section>
+
+  <Section id="use-failure" title="useFailure">
+    <p>
+      <code>useFailure(error: unknown, options?)</code> returns <code>FailureApi | null</code>. Pass
+      <code>null</code> when there is no failure; the hook returns <code>null</code> and holds no subscriptions.
+      The long-form page is
+      <a href={href("components/use-failure")}>here</a>.
+    </p>
+
+    <h3>Options</h3>
+    <PropsTable rows={failureOptions} />
+
+    <h3>Result</h3>
+    <PropsTable rows={failureResult} nameHeading="Value" />
+
+    <h3>The ten kinds</h3>
+    <p>
+      Ordered from “not really a failure” to “nothing the user can do”. The default column is <code
+        >canRetry</code
+      >.
+    </p>
+    <PropsTable rows={failureKinds} nameHeading="Kind" />
+
+    <p>
+      Field errors are extracted from five conventions and normalised onto a dotted path: RFC 9457
+      <code>errors</code> as a map or a list, JSON:API <code>source.pointer</code> with its RFC 6901 escapes, the
+      <code>field_errors</code> and <code>fieldErrors</code> maps, a flat list of
+      <code>path</code>, <code>field</code> or <code>name</code> with
+      <code>message</code>, <code>detail</code> or <code>title</code>, and
+      <code>violations</code>. A body is looked for at <code>body</code>, <code>data</code>,
+      <code>response.data</code>, <code>response.body</code>, and finally on the error itself.
+    </p>
+
+    <Snippet code={defaultMessagesCode} lang="ts" name="default copy" />
+
+    <Callout tone="note" title="Everything here is plain text">
+      <p>
+        No field ever contains markup, and no consumer should pass these strings to an HTML sink. Server <code
+          >detail</code
+        > text is carried through verbatim, which is exactly why it is kept separate from the user-facing <code
+          >message</code
+        >.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="announcer" title="Announcer and useAnnounce">
+    <p>
+      <code>Announcer</code> takes one optional prop, <code>id</code>, which prefixes the two rendered regions
+      as <code>id-polite</code> and <code>id-assertive</code>. It defaults to no id, because nothing in the
+      library looks these up and an unprefixed id risks colliding with the host application. The long-form
+      page is <a href={href("components/announcer")}>here</a>.
+    </p>
+
+    <Snippet code={announcerCode} name="App.tsx" />
+    <Snippet code={announcerMarkupCode} lang="html" name="rendered" />
+
+    <p>
+      Two regions rather than one, because switching a region's politeness at runtime is unreliable across
+      screen readers. The message is routed instead: confirmations go to the polite region, failures to the
+      assertive one. Both are <code>aria-atomic</code>, so a replaced message is read in full rather than
+      diffed word by word. The registration happens in a layout effect, so an action that settles in the same
+      commit as the mount does not announce into a void and trip UX1003 on first load.
+    </p>
+
+    <h3>useAnnounce</h3>
+    <p>
+      Returns <code>announce(message, politeness?)</code> and <code>live</code>. Politeness defaults to <code
+        >"polite"</code
+      >. The queue behind it enforces a 150 ms minimum gap between writes, drops a repeat of the same string
+      within 500 ms, caps itself at 20 entries so a runaway loop cannot grow it without limit, and lets an
+      assertive message jump ahead of anything waiting. Most code does not need this: action outcomes are
+      announced by the machine. Reach for it when the application itself has something to say, such as
+      “filters cleared, 240 results”.
+    </p>
+    <Snippet code={announceCode} lang="ts" name="useAnnounce" />
+  </Section>
+
+  <Section id="provider" title="UnruffledProvider">
+    <p>
+      Optional. Every hook works without it, because a library that only behaves correctly once a provider is
+      wired has made its first-run experience the thing most likely to be got wrong.
+    </p>
+
+    <PropsTable rows={providerProps} nameHeading="Prop" />
+
+    <h3>UnruffledDefaults</h3>
+    <p>
+      Deliberately behavioural only. There is nothing here about colour, radius, spacing or typography,
+      because the library emits no visual and so has no opinion to configure. Note what is absent: <code
+        >guard</code
+      >, <code>focus</code> and <code>resetAfterMs</code> are per-call-site decisions and cannot be set globally.
+    </p>
+    <PropsTable rows={providerDefaults} />
+
+    <p>
+      <code>useUnruffledDefaults()</code> reads this back, returning an empty object when there is no provider.
+    </p>
+  </Section>
+
+  <Section id="reduced-motion" title="usePrefersReducedMotion">
+    <p>
+      <code>usePrefersReducedMotion(): boolean</code>, and
+      <code>prefersReducedMotion(): boolean</code> for code outside a component. The hook subscribes to the media
+      query through <code>useSyncExternalStore</code> rather than reading
+      <code>matchMedia</code> once into state at mount, so a user who turns the preference on mid-session, or moves
+      a window to a display with different settings, gets the new answer without a remount.
+    </p>
+    <p>
+      There is nothing to enable. The library treats <code>true</code> as “reduce” everywhere without being asked,
+      and reduction means amplitude, not a kill switch: a countdown keeps counting and stays accurate, it simply
+      stops animating. On the server and in a runtime without <code>matchMedia</code> the answer is <code
+        >false</code
+      >, which keeps the server output stable and corrects itself on hydration. See <a
+        href={href("animation")}>Animation</a
+      >.
+    </p>
+  </Section>
+
+  <Section id="advanced" title="Advanced: building your own primitive">
+    <p>
+      These five are exported so that a primitive the library has not shipped yet can be built on the same
+      runtime, with the same ports and the same testability. They are not needed for ordinary use and their
+      shapes may move before 1.0.
+    </p>
+    <PropsTable rows={advanced} nameHeading="Export" />
+  </Section>
+
+  <Section id="core" title="@unruffled/core">
+    <p>
+      Nothing in core imports a framework, touches a global or emits a pixel. A framework adapter drives <code
+        >createService</code
+      > and renders whatever the matching
+      <code>connect</code> function returns.
+    </p>
+
+    <h3>The machine runtime</h3>
+    <PropsTable rows={coreMachineExports} nameHeading="Export" />
+
+    <p>
+      Types exported alongside them: <code>ActionFn</code>, <code>AnyEvent</code>,
+      <code>EffectApi</code>, <code>EffectFn</code>, <code>GuardFn</code>,
+      <code>InternalEvent</code>, <code>MachineApi</code>, <code>MachineDefinition</code>,
+      <code>Service</code>, <code>ServiceOptions</code>, <code>Snapshot</code>,
+      <code>StateNode</code>, <code>Transition</code>, <code>TransitionConfig</code> and
+      <code>TransitionRecord</code>, plus the action machine's own
+      <code>ActionApi</code>, <code>ActionAttrs</code>, <code>ActionStatus</code>,
+      <code>ActionAnnouncements</code>, <code>ActionContext</code>, <code>ActionEvent</code>,
+      <code>ActionProps</code>, <code>ActionStateValue</code>, <code>FocusPolicy</code>,
+      <code>GuardMode</code>, <code>PendingPolicy</code>, <code>RetryPolicy</code> and
+      <code>StashedOutcome</code>.
+    </p>
+
+    <h3>The eight ports</h3>
+    <p>
+      Ports are the only way a machine reaches the outside world. Every impure capability is declared as a
+      narrow interface and injected, which is what makes timing deterministic in tests, multi-window and
+      shadow-DOM correctness structural rather than remembered, and a Vue or Svelte adapter a mechanical job.
+      No port is mandatory.
+    </p>
+    <PropsTable rows={corePortExports} nameHeading="Port" />
+
+    <h3>Everything else</h3>
+    <PropsTable rows={coreOtherExports} nameHeading="Export" />
+  </Section>
+
+  <Section id="diagnostics" title="@unruffled/core/diagnostics">
+    <p>
+      A separate subpath, not part of the barrel. Everything behind it is wrapped in
+      <code>__DEV__</code>, which the default build replaces with <code>false</code>, so the rule table, the
+      formatter and every call site collapse to nothing and a production bundle carries no diagnostics bytes
+      at all. The <code>development</code> export condition resolves to the build where <code>__DEV__</code> is
+      <code>true</code>.
+    </p>
+    <PropsTable rows={diagnosticsExports} nameHeading="Export" />
+    <p>
+      Reports are de-duplicated one per code per call site, so a rule inside a list row fires once rather than
+      once per row, and history is capped at 200 events. The nine rules, with what each one costs a user, are
+      on the <a href={href("diagnostics")}>diagnostics</a> pages.
+    </p>
+  </Section>
+
+  <Section id="testing" title="@unruffled/testing">
+    <p>
+      A library whose whole value is correct timing cannot be allowed to fail at timing, and a suite that
+      sleeps will not catch it. Everything here exists so that “the spinner does not appear before 150 ms”,
+      “the second click was swallowed” and “exactly one announcement reached the live region” are ordinary
+      assertions. Install it as a devDependency.
+    </p>
+    <PropsTable rows={testingExports} nameHeading="Export" />
+    <Snippet code={testCode} lang="ts" name="action.test.ts" />
+  </Section>
+
+  <Section id="subpaths" title="Subpath exports and what each costs">
+    <p>
+      Brotli, measured by <code>size-limit</code> against the built output. The React layer figures exclude React
+      itself; the barrel figure is everything retained, which is the number to judge the library by rather than
+      a best case with most of it shaken out.
+    </p>
+    <PropsTable rows={subpaths} nameHeading="Subpath" />
+    <p>
+      Both packages set <code>sideEffects: false</code> and ship ESM only. The per-primitive subpaths are a guarantee
+      rather than a workaround: the barrel tree-shakes, and the subpaths exist so you can prove it in your own bundle
+      report.
+    </p>
+  </Section>
+</DocPage>

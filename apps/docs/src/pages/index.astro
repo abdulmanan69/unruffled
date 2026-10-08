@@ -42,6 +42,59 @@ useUndoable. One of the two is required when destructive is true.
 Site: DeleteCustomerButton (src/customers/DeleteCustomerButton.tsx:24:18)
 Docs: ${SITE.origin}/unruffled/diagnostics/ux1001/
 Suppress: diagnostics.suppress("UX1001")`;
+
+const handRolled = `const [saving, setSaving] = useState(false);
+const [error, setError] = useState<string | null>(null);
+
+async function onSave() {
+  if (saving) return;              // too late: state is not set yet
+  setSaving(true);
+  setError(null);
+  try {
+    await api.saveCustomer(form);
+  } catch (e) {
+    setError(String(e));           // a string is not an error UX
+  } finally {
+    setSaving(false);              // fires even after unmount
+  }
+}
+
+<button onClick={onSave} disabled={saving}>
+  {saving ? <Spinner /> : null}    {/* flashes under 150ms */}
+  {saving ? "Saving..." : "Save customer"}
+</button>`;
+
+const withUnruffled = `const save = useAction(() => api.saveCustomer(form), {
+  key: \`customer:\${id}\`,
+  announce: { success: "Customer saved" },
+  onError: setFailure,
+});
+
+<button {...save.triggerProps}>
+  {save.pending ? <Spinner /> : null}
+  {save.pending ? "Saving..." : "Save customer"}
+</button>`;
+
+const primitives = [
+  {
+    name: "useAction",
+    path: "components/use-action",
+    what: "The action lifecycle: synchronous duplicate guard, pending thresholds, abort, retry, announcement.",
+    size: "2.07 kB",
+  },
+  {
+    name: "useFailure",
+    path: "components/use-failure",
+    what: "Ten failure kinds from whatever your API rejected with, and an honest answer to whether a retry can work.",
+    size: "included",
+  },
+  {
+    name: "Announcer",
+    path: "components/announcer",
+    what: "Two live regions, a de-duplicating queue, and the trick that makes a repeated message announce at all.",
+    size: "692 B",
+  },
+];
 ---
 
 <Base title="Overview" path="" sidebar={false}>
@@ -120,6 +173,50 @@ Suppress: diagnostics.suppress("UX1001")`;
 
   <section class="shell band">
     <div class="band__head">
+      <p class="label">What you stop writing</p>
+      <h2>The same button, both ways.</h2>
+      <p class="band__lede">
+        On the left is the version almost every codebase has. It is not badly written; it is simply missing
+        the six things nobody remembers at the moment they write it.
+      </p>
+    </div>
+
+    <div class="codecompare">
+      <div class="codecompare__side">
+        <p class="label label--fault">Before</p>
+        <pre class="codeblock"><code>{handRolled}</code></pre>
+      </div>
+      <div class="codecompare__side">
+        <p class="label label--settled">After</p>
+        <pre class="codeblock codeblock--good"><code>{withUnruffled}</code></pre>
+      </div>
+    </div>
+
+    <ul class="gained">
+      <li>
+        <strong>The guard is synchronous.</strong> It is taken in the event handler, before any await, so the second
+        click cannot get through.
+      </li>
+      <li>
+        <strong>The guard is keyed by record.</strong> A different component writing <code>customer:42</code> contends
+        too.
+      </li>
+      <li>
+        <strong>The trigger is never disabled.</strong> It keeps focus and reports <code>aria-disabled</code> instead.
+      </li>
+      <li>
+        <strong>The spinner has two thresholds.</strong> It does not appear under 150&thinsp;ms and does not vanish
+        under 400.
+      </li>
+      <li><strong>The request aborts</strong> on unmount and on cancel.</li>
+      <li><strong>The failure is classified</strong>, and the outcome is announced.</li>
+    </ul>
+  </section>
+
+  <hr class="rule" />
+
+  <section class="shell band">
+    <div class="band__head">
       <p class="label">Why this exists</p>
       <h2>The gap is measurable, so we measured it.</h2>
       <p class="band__lede">
@@ -166,6 +263,33 @@ Suppress: diagnostics.suppress("UX1001")`;
       merely dead code behind a flag — they are not in the module graph at all.
       <a href={href("diagnostics")}>See all nine rules</a>.
     </p>
+  </section>
+
+  <hr class="rule" />
+
+  <section class="shell band">
+    <div class="band__head">
+      <p class="label">What ships today</p>
+      <h2>Three primitives, and nothing you did not ask for.</h2>
+      <p class="band__lede">
+        Version 0.1.0 is deliberately small. Confirmation flows, undo windows and the collection primitives
+        are designed and on the <a href={href("roadmap")}>roadmap</a>, not half-shipped.
+      </p>
+    </div>
+
+    <ul class="primitives">
+      {
+        primitives.map((item) => (
+          <li class="primitives__item">
+            <a href={href(item.path)}>
+              <code>{item.name}</code>
+              <span class="primitives__size">{item.size}</span>
+            </a>
+            <p>{item.what}</p>
+          </li>
+        ))
+      }
+    </ul>
   </section>
 
   <hr class="rule" />
@@ -390,6 +514,121 @@ Suppress: diagnostics.suppress("UX1001")`;
     width: 0.625rem;
     height: 1px;
     background: var(--rule-strong);
+  }
+
+  /* ---- Code comparison --------------------------------------------------- */
+
+  .codecompare {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+    gap: var(--s-4);
+  }
+
+  .codecompare__side {
+    display: grid;
+    gap: var(--s-3);
+    align-content: start;
+    min-width: 0;
+  }
+
+  .codeblock {
+    margin: 0;
+    padding: var(--s-4);
+    overflow-x: auto;
+    background: var(--paper-sunk);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--fault);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: var(--ink-soft);
+  }
+
+  .codeblock--good {
+    border-left-color: var(--settled);
+  }
+
+  .gained {
+    display: grid;
+    gap: var(--s-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-width: 76ch;
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+
+  .gained li {
+    padding-left: var(--s-5);
+    position: relative;
+  }
+
+  .gained li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.65em;
+    width: 0.75rem;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--settled);
+  }
+
+  .gained strong {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .gained code {
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+    color: var(--signal);
+  }
+
+  /* ---- Primitives -------------------------------------------------------- */
+
+  .primitives {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--rule);
+  }
+
+  .primitives__item {
+    padding: var(--s-5) var(--s-5) var(--s-5) 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .primitives__item a {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-3);
+    text-decoration: none;
+  }
+
+  .primitives__item code {
+    font-family: var(--font-mono);
+    font-size: var(--text-md);
+    color: var(--signal);
+  }
+
+  .primitives__size {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--graphite);
+  }
+
+  .primitives__item p {
+    margin-top: var(--s-2);
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+    max-width: 34ch;
   }
 
   @media (max-width: 40rem) {

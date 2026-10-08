@@ -14,7 +14,16 @@ import { href } from "../../lib/site";
 const codes = Object.keys(RULES) as DiagnosticCode[];
 const errors = codes.filter((code) => RULES[code].severity === "error");
 const warnings = codes.filter((code) => RULES[code].severity === "warning");
-const staticallyChecked = codes.filter((code) => RULES[code].static);
+
+/**
+ * Only these four have report sites in the shipped code.
+ *
+ * The remaining five name defects in primitives that are not part of 0.1.0. Their codes are
+ * published now so that they are stable before anything emits them, but a summary that
+ * counted all nine as active would be claiming diagnostics that cannot fire.
+ */
+const REPORTED_TODAY = new Set<DiagnosticCode>(["UX1001", "UX1002", "UX1003", "UX1004"]);
+const active = codes.filter((code) => REPORTED_TODAY.has(code));
 ---
 
 <Base
@@ -45,8 +54,8 @@ const staticallyChecked = codes.filter((code) => RULES[code].static);
       <dd>{warnings.length}</dd>
     </div>
     <div>
-      <dt class="label">Statically checkable</dt>
-      <dd>{staticallyChecked.length}</dd>
+      <dt class="label">Reported today</dt>
+      <dd>{active.length}</dd>
     </div>
   </dl>
 
@@ -54,6 +63,13 @@ const staticallyChecked = codes.filter((code) => RULES[code].static);
     Everything here is development-only. The rule table lives on its own subpath and nothing a production
     build reaches imports it, so these strings are not in your shipped module graph at all. Suppress a rule
     with <code>diagnostics.suppress("UX1001")</code> if you have a reason.
+  </p>
+
+  <p class="prose">
+    Four of the nine are reported today, all from the action machine. The other five describe defects in
+    primitives that are not part of 0.1.0 — a confirmation flow, an undo window, a data-state surface. Their
+    codes are published now so they are stable before anything emits them, and they are listed here so the
+    numbering never has to shift.
   </p>
 
   <ul class="rules">
@@ -70,7 +86,7 @@ const staticallyChecked = codes.filter((code) => RULES[code].static);
             <p class="rules__meta">
               <span>{rule.severity}</span>
               <span aria-hidden="true">·</span>
-              <span>{rule.static ? "ESLint rule available" : "runtime only"}</span>
+              <span>{REPORTED_TODAY.has(code) ? "reported in 0.1.0" : "awaiting its primitive"}</span>
             </p>
           </li>
         );

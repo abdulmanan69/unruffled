@@ -1,0 +1,622 @@
+---
+/**
+ * Accessibility.
+ *
+ * This page exists to be checked rather than believed. Every behaviour it describes is
+ * either visible in `packages/react/src` or asserted in the suite, and the section on what
+ * is not covered is as long as the sections on what is, because a credibility page that
+ * only lists strengths is marketing.
+ */
+import DocPage from "../components/docs/DocPage.astro";
+import Section from "../components/docs/Section.astro";
+import Snippet from "../components/docs/Snippet.astro";
+import Demo from "../components/docs/Demo.astro";
+import Callout from "../components/docs/Callout.astro";
+import PropsTable from "../components/docs/PropsTable.astro";
+import Keys from "../components/docs/Keys.astro";
+import Mistake from "../components/docs/Mistake.astro";
+import { href } from "../lib/site";
+import { AnnouncerDemo } from "../components/demos/index.tsx";
+
+const triggerAttrs = [
+  {
+    name: "aria-busy",
+    type: "boolean",
+    default: "false",
+    description:
+      "True while the machine is in busy, settling or backoff. Tells assistive technology the region is updating.",
+    why: "Set from busy, not from the spinner. The affordance may still be hidden by the delay threshold while work is genuinely in flight.",
+  },
+  {
+    name: "aria-disabled",
+    type: "true | undefined",
+    default: "undefined",
+    description:
+      'True while activation is suppressed. Omitted rather than rendered as false, because aria-disabled="false" is noise in the accessibility tree.',
+    why: "Never paired with disabled. The element stays focusable and stays in the tab order.",
+  },
+  {
+    name: "data-pending",
+    type: '"" | undefined',
+    default: "undefined",
+    description: "Present while the pending affordance should render. Your CSS hook for the spinner.",
+  },
+  {
+    name: "data-state",
+    type: '"idle" | "busy" | "settling" | "backoff" | "success" | "error"',
+    description: "The raw machine state, for styling the whole lifecycle rather than a boolean.",
+  },
+  {
+    name: "data-attempt",
+    type: "string | undefined",
+    default: "undefined",
+    description:
+      "The attempt number from the second attempt onwards, so retry copy can say which try this is.",
+  },
+  {
+    name: "type",
+    type: '"button"',
+    default: '"button"',
+    description: "Set so a trigger inside a form does not submit it by accident.",
+  },
+];
+
+const badDisabled = `<button
+  {...save.triggerProps}
+  disabled={save.pending}
+>
+  {save.pending ? "Saving" : "Save customer"}
+</button>`;
+
+const goodDisabled = `<button {...save.triggerProps}>
+  {save.pending ? "Saving" : "Save customer"}
+</button>`;
+
+const announceCode = `const save = useAction(() => api.saveCustomer(form), {
+  key: \`customer:\${id}\`,
+  announce: {
+    pending: "Saving customer",
+    success: "Customer saved",
+    // error defaults to the normalised failure message,
+    // which is already written for a user.
+  },
+});`;
+
+const rootCode = `// Once, near the root. There is nothing else to wire.
+import { Announcer } from "@unruffled/react";
+
+export function App({ children }) {
+  return (
+    <>
+      {children}
+      <Announcer />
+    </>
+  );
+}`;
+
+const failureCode = `const failure = useFailure(save.failure);
+
+{failure && (
+  <p {...failure.summaryProps}>{failure.message}</p>
+)}`;
+
+const testCode = `import { createTestPorts, flushMicrotasks } from "@unruffled/testing";
+
+it("announces success politely, exactly once", async () => {
+  const ports = createTestPorts();
+
+  render(<SaveButton options={{ ports, announce: { success: "Customer saved" } }} />);
+  await user.click(screen.getByRole("button"));
+  await flushMicrotasks();
+
+  // Not "contains". The whole array.
+  expect(ports.announcer.announcements).toEqual([
+    { message: "Customer saved", politeness: "polite" },
+  ]);
+});`;
+
+const liveRegionTestCode = `render(
+  <>
+    <Announcer />
+    <SaveButton run={() => Promise.resolve("ok")} options={{ announce: { success: "Customer saved" } }} />
+  </>,
+);
+
+await user.click(screen.getByRole("button"));
+
+await waitFor(() => {
+  expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent("Customer saved");
+});
+// The failure region stays empty: a success must not interrupt.
+expect(screen.getByRole("alert")).toHaveTextContent("");`;
+
+const keyRows = [
+  {
+    keys: ["Tab"],
+    action: "Moves to the trigger. It is in the tab order in every state, including while pending.",
+  },
+  {
+    keys: ["Enter"],
+    action:
+      "Activates the trigger. On a native button the browser does this; the library adds no second activation, so the action runs once.",
+  },
+  {
+    keys: ["Space"],
+    action:
+      'Activates the trigger, same as Enter. On an element that is not a button but carries role="button", the library synthesises activation for both keys.',
+  },
+  {
+    keys: ["Enter"],
+    action: "While pending: default prevented, nothing fires. The focus stays exactly where it was.",
+  },
+  {
+    keys: ["Space"],
+    action:
+      "While pending: default prevented, so the page does not scroll and the action does not run twice.",
+  },
+];
+
+const notCovered = [
+  {
+    name: "Colour contrast",
+    type: "Yours",
+    description:
+      "The library sets no colour. data-state tells you which state you are in; whether your error red passes 4.5:1 against your surface is a decision in your stylesheet.",
+  },
+  {
+    name: "Hit targets",
+    type: "Yours",
+    description: "No padding, no min-height, no pointer area. The trigger is your element with your CSS.",
+  },
+  {
+    name: "Focus-ring styling",
+    type: "Yours",
+    description:
+      "The library moves focus and never styles it. If your reset removed the outline, a restored focus is invisible and the restoration is worthless.",
+  },
+  {
+    name: "Reading order",
+    type: "Yours",
+    description: "DOM order is yours. A spinner placed after the label in source reads after the label.",
+  },
+  {
+    name: "Accessible names",
+    type: "Yours",
+    description:
+      "An icon-only trigger needs a name from you. The library spreads props onto your element; it never invents a label for it.",
+  },
+  {
+    name: "Live-region placement",
+    type: "Ours, once mounted",
+    description:
+      "Announcer renders and registers the two regions. Mounting it is the one step you own; it is also the one step UX1003 checks.",
+  },
+];
+---
+
+<DocPage
+  title="Accessibility"
+  eyebrow="Concern"
+  path="accessibility"
+  lede="The async half of a UI is where accessibility is normally lost: a button that vanishes from the tab order, a wait no screen reader hears, a failure announced only in colour. That is the whole subject of this library, not a section of it."
+  meta={[
+    { label: "Announcer", value: "692 B brotli" },
+    { label: "Tests", value: "50" },
+    { label: "Screen-reader audit", value: "not yet done" },
+  ]}
+>
+  <Section id="position" title="The position">
+    <p>
+      This library emits no pixels. It has no colour, no spacing, no component. What is left once you remove
+      the visual layer is almost entirely accessibility work: focus, the tab order, state exposed to the
+      accessibility tree, and what gets read aloud and when. There is no other substance here to put it
+      beside.
+    </p>
+    <p>
+      That has a consequence worth being blunt about. An accessibility feature is something you can switch off
+      and still have a product. Here you cannot: remove announcements and
+      <code>useAction</code> is a promise wrapper, remove <code>aria-disabled</code> and the duplicate-click guard
+      has no way to tell the user what it did. So announcement is on by default and silence is the opt-out, which
+      is the inverse of the usual arrangement.
+    </p>
+    <p>
+      The defaults are the product. Everything below is what the library does when you pass nothing at all.
+    </p>
+  </Section>
+
+  <Section id="disabled" title="The disabled rule">
+    <p>
+      One decision shapes more of this library than any other: <strong>the trigger is never disabled</strong>. <code
+        >triggerProps</code
+      > has no <code>disabled</code> key, and
+      <code>TriggerPropOverrides</code> types it as <code>never</code>, so passing one through
+      <code>getTriggerProps</code> does not compile.
+    </p>
+
+    <h3>What a disabled attribute actually does</h3>
+    <p>
+      A disabled element is removed from the tab order. Browsers also do not keep focus on it. So the common
+      pattern &mdash; press the button, set <code>disabled</code> while the request runs &mdash; does this, in order:
+    </p>
+    <ol>
+      <li>The user presses the button. Focus is on the button.</li>
+      <li>React re-renders with <code>disabled</code> set.</li>
+      <li>
+        The browser drops focus from the now-disabled element. <code>document.activeElement</code>
+        becomes <code>body</code>.
+      </li>
+      <li>
+        The next <kbd>Tab</kbd> starts from the top of the document, not from where the user was.
+      </li>
+      <li>
+        The request finishes, <code>disabled</code> is cleared, and the button is reachable again &mdash; around
+        twenty tab stops away from where the user is now.
+      </li>
+    </ol>
+    <p>
+      For a screen-reader user it is worse than losing their place. The control they were just interacting
+      with has left the accessibility tree mid-interaction, so there is nothing to announce a state change on,
+      and nothing to return to.
+    </p>
+
+    <h3>What the library does instead</h3>
+    <ul>
+      <li>The element stays in the tab order and keeps focus. Nothing is removed and nothing moves.</li>
+      <li>
+        <code>aria-disabled</code> is set to <code>true</code> while the action is busy, so the state is in the
+        accessibility tree. It is omitted entirely, rather than set to <code>false</code>, when the action is
+        idle.
+      </li>
+      <li>
+        <code>aria-busy</code> is set from the machine's busy states, so assistive technology knows the region is
+        updating even before the spinner is allowed to appear.
+      </li>
+      <li>
+        Activation is refused in the handlers. The click handler calls
+        <code>preventDefault()</code> and <code>stopPropagation()</code>; stopping propagation matters because
+        a parent row handler would otherwise treat the refused click as a row selection.
+      </li>
+      <li>
+        <kbd>Enter</kbd> and <kbd>Space</kbd> are swallowed the same way while busy, so keyboard activation and
+        pointer activation are refused identically.
+      </li>
+    </ul>
+    <p>
+      The guard underneath this is synchronous and keyed by resource, not by component, so the second press is
+      rejected inside the handler before any await. The visual state and the guard are separate mechanisms;
+      disabling the button was never what prevented the double submit.
+    </p>
+
+    <PropsTable rows={triggerAttrs} nameHeading="Attribute on the trigger" />
+
+    <Mistake
+      title="Disabling the trigger while pending"
+      why="Setting disabled throws focus to the top of the document at the exact moment the user is waiting, and removes the control from the accessibility tree mid-interaction. The spread already reports the state and already refuses the second press."
+      bad={badDisabled}
+      good={goodDisabled}
+    />
+
+    <Callout tone="warning" title="On the label, not the attribute">
+      <p>
+        Change the text, not the availability. <code>save.pending</code> is false for the first 150&thinsp;ms by
+        design, so the label does not flicker on a fast save either.
+      </p>
+    </Callout>
+
+    <p>
+      Rule <code>UX1005</code> in the diagnostics table covers the general case, <em
+        >"disabled used on a control that has a gate reason"</em
+      >, and is one of the four rules decidable from source alone. Its stated fix names
+      <code>useGate</code>, which is not in v0.1.0. For a trigger the shipped answer is the one above: spread <code
+        >triggerProps</code
+      >, read <code>pending</code>, and do not add
+      <code>disabled</code>.
+    </p>
+  </Section>
+
+  <Section id="announcements" title="What is announced and when">
+    <p>
+      <code>Announcer</code> renders two live regions and registers them with the library. Two rather than one,
+      because switching a region's politeness at runtime is unreliable across screen readers, so the message is
+      routed instead of the region reconfigured.
+    </p>
+    <ul>
+      <li>
+        <code>aria-live="polite"</code> with <code>aria-atomic="true"</code>, for confirmations. "Customer
+        saved" arriving a moment later is better than it interrupting someone mid-sentence.
+      </li>
+      <li>
+        <code>role="alert"</code> with <code>aria-live="assertive"</code> and
+        <code>aria-atomic="true"</code>, for failures. A user who has already moved on needs to know the save
+        did not happen.
+      </li>
+    </ul>
+    <p>
+      Both are hidden with an inline clip-based style rather than a class. <code>display: none</code>,
+      <code>visibility: hidden</code> and the <code>hidden</code> attribute all remove the element from the accessibility
+      tree and make the region silent, and
+      <code>width: 0; height: 0</code> is skipped by some screen readers. It is inline because the library ships
+      no CSS, and a live region that depends on the consumer having imported a stylesheet is one that will sometimes
+      be silent.
+    </p>
+
+    <Snippet code={rootCode} name="app/root.tsx" />
+
+    <h3>The three moments</h3>
+    <ol>
+      <li>
+        <strong>Pending.</strong> Announced politely when the affordance becomes visible, which is after the delay
+        threshold, and only if you supplied <code>announce.pending</code>. There is no default string: a
+        library-chosen "Loading" on every button in an application is noise.
+      </li>
+      <li>
+        <strong>Success.</strong> Announced politely on entering <code>success</code>. Defaults to
+        <code>"Done."</code> if you pass no <code>announce.success</code>.
+      </li>
+      <li>
+        <strong>Failure.</strong> Announced assertively on entering <code>error</code>. Defaults to the
+        normalised failure message, which is already written for a user rather than a developer &mdash; "Your
+        session has expired. Sign in to continue." rather than a stack.
+      </li>
+    </ol>
+    <p>
+      An aborted request announces nothing. An abort is the library's own cancellation, not a failure, so it
+      transitions back to idle without reporting anything. Setting
+      <code>announce: false</code> silences a call site; setting it on
+      <code>UnruffledProvider</code> silences the application, and the type only accepts
+      <code>false</code> there for exactly that reason.
+    </p>
+
+    <Snippet code={announceCode} name="announce" />
+
+    <h3>Queueing</h3>
+    <p>
+      Naive live regions have two failure modes and both are common: saying nothing, and saying everything
+      twice. The write path handles four things.
+    </p>
+    <ul>
+      <li>
+        <strong>A minimum 150&thinsp;ms gap between writes.</strong> Two messages in the same frame make screen
+        readers drop one.
+      </li>
+      <li>
+        <strong>Identical repeats within 500&thinsp;ms are dropped.</strong> Two components reporting the same outcome
+        produce one announcement.
+      </li>
+      <li>
+        <strong>An alternating zero-width suffix.</strong> A live region only announces when its content changes,
+        so writing the same string twice is silent. That is why "Saved" announces the first time and never again
+        in a hand-rolled region. The suffix flips on alternate writes and is not read aloud.
+      </li>
+      <li>
+        <strong>Assertive messages jump the queue</strong>, and the queue is capped at twenty so a runaway
+        loop cannot grow it without bound.
+      </li>
+    </ul>
+    <p>
+      Messages announced before <code>Announcer</code> mounts are not lost: registration drains whatever is queued.
+    </p>
+
+    <Demo
+      title="The real live region"
+      hint="Turn on a screen reader, or inspect the DOM"
+      note="This writes to the same registry the hooks write to. The text you see appearing in the region is the text that is read."
+    >
+      <AnnouncerDemo client:visible />
+    </Demo>
+
+    <h3>Do not announce the same thing twice</h3>
+    <p>
+      <code>useFailure</code> returns <code>summaryProps</code> with
+      <code>role="alert"</code> and a <code>data-kind</code> attribute, for an inline banner that is announced on
+      appearance without needing a region of its own. The library already announces the failure. Pairing the banner
+      with a toast saying the same sentence means the user hears it twice.
+    </p>
+    <Snippet code={failureCode} name="inline summary" />
+  </Section>
+
+  <Section id="keyboard" title="Keyboard support">
+    <p>
+      There is not much surface here, which is the point: the trigger is your element, usually a native
+      button, and the library avoids getting between it and the browser.
+    </p>
+    <Keys rows={keyRows} />
+    <p>
+      The key-handling detail that is easy to get wrong: a native button already turns
+      <kbd>Enter</kbd> and <kbd>Space</kbd> into a click, so a hook that also fires on those keys runs the action
+      twice. The handler checks whether the element is a
+      <code>BUTTON</code> and only synthesises activation when it is not &mdash; for a
+      <code>div</code> you have given <code>role="button"</code>, for instance. Use a real button and you get
+      the browser's behaviour; use something else and you get the same behaviour explicitly.
+    </p>
+    <p>
+      Your own handlers passed to <code>getTriggerProps</code> run after the library's, and only when the activation
+      was not suppressed. A refused second click does not call your
+      <code>onClick</code>.
+    </p>
+  </Section>
+
+  <Section id="focus" title="Focus behaviour">
+    <p>
+      The default focus policy is <code>restore</code>, and in the normal case it does nothing at all. The
+      trigger is never disabled, so it never loses focus, so there is nothing to restore.
+    </p>
+    <p>
+      It exists for the case where it is not normal: the surrounding UI replaced the subtree while the action
+      was in flight. That is routine in optimistic lists, and it leaves focus on the document body. When an
+      action moves from pending to settled, the library checks whether the owning root reports any focused
+      element, and only if there is none does it focus the trigger again, with <code>preventScroll: true</code
+      > so the page does not jump.
+    </p>
+    <ul>
+      <li>It is a layout effect, so the restore happens before paint rather than a frame after it.</li>
+      <li>
+        The focus read goes through the document port, which is handed the owning root. An action inside a
+        shadow root or a popped-out window reads that root's
+        <code>activeElement</code>, not the top-level document's. Libraries that reach for the global <code
+          >document</code
+        > have carried that bug for years.
+      </li>
+      <li>
+        <code>focus: "none"</code> switches it off, for an action triggered without a pointer or key press, where
+        moving focus would be an interruption rather than a repair.
+      </li>
+    </ul>
+    <Callout tone="warning" title="Restoring focus you cannot see">
+      <p>
+        The library moves focus and never styles it. If your CSS reset removed
+        <code>:focus-visible</code> outlines, the restore still happens and the user still cannot tell. Check your
+        focus ring before trusting this section.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="not-covered" title="What we do NOT cover">
+    <p>
+      The library emits no markup of its own except the two live regions, and no CSS at all. Every
+      accessibility concern that lives in pixels or in your DOM is yours, and no amount of correct
+      <code>aria-busy</code> compensates for any of them.
+    </p>
+    <PropsTable rows={notCovered} nameHeading="Concern" />
+    <p>
+      Nothing in this library will tell you that your error state is distinguished only by colour, that your
+      icon-only trigger has no accessible name, that your 24&thinsp;px tap target is too small, or that your
+      spinner is announced as "image". Those are the majority of real accessibility defects. Run an audit;
+      this is not one.
+    </p>
+  </Section>
+
+  <Section id="testing" title="Testing">
+    <p>
+      A library whose value is correct timing cannot be allowed to fail at timing, and a suite that sleeps
+      will not catch it. <code>@unruffled/testing</code> supplies deterministic ports so "the spinner did not appear
+      before 150&thinsp;ms", "the second click was swallowed" and "exactly one announcement reached the live region"
+      are ordinary assertions.
+    </p>
+    <ul>
+      <li>
+        <code>createTestPorts()</code> returns the full bundle with a fake clock, a recording announcer, in-memory
+        storage, a scripted navigation port and a fake document.
+      </li>
+      <li>
+        <code>createFakeClock()</code> gives you <code>advance(ms)</code>,
+        <code>flush()</code>, <code>pending()</code> and <code>frames()</code>. The last two are how you
+        assert teardown: a machine that cleaned up correctly leaves zero of each.
+      </li>
+      <li>
+        <code>createRecordingAnnouncer()</code> exposes <code>announcements</code>, the filter
+        <code>at("assertive")</code> for checking that failures interrupt, and
+        <code>setLive(false)</code> to simulate an application that never rendered
+        <code>Announcer</code> &mdash; which is exactly what UX1003 fires on.
+      </li>
+      <li>
+        <code>createFakeDoc()</code> gives <code>setActiveElement()</code> for focus-restoration assertions and
+        <code>listenerCount()</code> for leak assertions.
+      </li>
+    </ul>
+
+    <h3>Exactly one announcement</h3>
+    <p>
+      The suite asserts the whole array, not that it contains the message. "Announced" is easy to pass; a
+      duplicate announcement passes it too, and a duplicate is what a user actually complains about.
+    </p>
+    <Snippet code={testCode} name="announce.test.tsx" />
+    <p>
+      The React layer repeats the check against the real DOM rather than a recording port: it renders
+      <code>Announcer</code>, clicks, and asserts the text landed in the polite region
+      <em>and</em> that the assertive region is still empty. A success that interrupts is a defect even though it
+      was announced.
+    </p>
+    <Snippet code={liveRegionTestCode} name="useAction.test.tsx" />
+  </Section>
+
+  <Section id="conformance" title="The conformance claim">
+    <p>Stated plainly, because this is the part that is usually fudged.</p>
+
+    <h3>What has been tested</h3>
+    <ul>
+      <li>50 tests across core and the React layer, run in jsdom with deterministic ports.</li>
+      <li>
+        Keyboard interaction: activation by <kbd>Enter</kbd> and <kbd>Space</kbd>, suppression of both while
+        busy, no double activation on a native button.
+      </li>
+      <li>
+        ARIA attributes: that the trigger is <em>not</em> disabled, that
+        <code>aria-disabled</code> appears while busy and is absent when idle, and that
+        <code>aria-busy</code> tracks the machine.
+      </li>
+      <li>
+        Announcements: politeness routing, the exactly-once assertion above, silence under
+        <code>announce: false</code>, and that text reaches a real mounted region in jsdom.
+      </li>
+      <li>Focus restoration when the active element was lost during the request.</li>
+    </ul>
+
+    <h3>What has not</h3>
+    <ul>
+      <li>
+        <strong>No real screen reader has been run against this.</strong> Not NVDA, not JAWS, not VoiceOver, not
+        TalkBack. jsdom tells you an attribute is present and that text entered a region; it tells you nothing about
+        whether a given screen reader in a given browser actually reads it, which is the question that matters.
+      </li>
+      <li>
+        No WCAG conformance claim is made at any level. The library ships no pixels, so most success criteria
+        are not addressable by it, and the ones that are have not been audited by anyone outside the project.
+      </li>
+      <li>No formal accessibility statement, no VPAT, no third-party audit.</li>
+    </ul>
+
+    <Callout tone="warning" title="Read this as untested in the place it counts">
+      <p>
+        Verification across NVDA, JAWS, VoiceOver and TalkBack is on the <a href={href("roadmap")}>roadmap</a> and
+        has not been done. Until it has, treat the announcement behaviour as carefully reasoned and unit-tested,
+        not as verified. If you depend on it, test it with the reader your users use, and open an issue when it
+        disagrees with this page.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="diagnostics" title="The nine diagnostics as an accessibility tool">
+    <p>
+      The honest problem with accessibility guidance is that it arrives as documentation, and documentation
+      loses to a deadline. A console message with a file and a line does not.
+    </p>
+    <p>
+      There are nine rules, each with a permanent code. Every one fires when the wiring is
+      <em>wrong</em> &mdash; never when an accessibility feature is merely switched on, which is the pattern that
+      teaches developers to silence warnings instead of fixing code. Reports are de-duplicated per code per call
+      site, so a rule inside a list row fires once rather than once per row.
+    </p>
+    <p>Four are reported by the shipped action machine:</p>
+    <ul>
+      <li>
+        <code>UX1001</code> &mdash; a destructive action with neither a confirmation nor an undo path. Reported
+        when the action starts.
+      </li>
+      <li>
+        <code>UX1002</code> &mdash; an unkeyed action triggered again while a request is already in flight. A keyed
+        duplicate is dropped silently, because that is the guard working; an unkeyed one is reported, because without
+        a key the library cannot tell whether the two triggers touch the same resource.
+      </li>
+      <li>
+        <code>UX1003</code> &mdash; the accessibility rule proper. If the pending affordance was visible for 400&thinsp;ms
+        or more and no live region was mounted, a sighted user had clear feedback and a screen-reader user had none.
+        It is checked when the action settles, on the evidence that the wait actually happened, rather than on a
+        timer against the possibility that it might.
+      </li>
+      <li>
+        <code>UX1004</code> &mdash; the action rejected and nothing in scope classified the failure, so a failed
+        save looks identical to a successful one.
+      </li>
+    </ul>
+    <p>
+      The remaining five name primitives that are not in v0.1.0, so they are documented in the table and not
+      yet reported at runtime. All of it is behind a development flag: the rule table, the formatter and every
+      call site collapse to nothing in the default build, so a production bundle carries no diagnostics bytes.
+    </p>
+    <p>
+      The full table, with each rule's detail, its fix and whether it is decidable from source alone, is on
+      the <a href={href("diagnostics")}>diagnostics reference</a>.
+    </p>
+  </Section>
+</DocPage>

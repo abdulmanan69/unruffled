@@ -1,0 +1,705 @@
+---
+/**
+ * Theming.
+ *
+ * The page has to argue an absence before it can be useful: there is no theme object, no
+ * token set and no stylesheet, because the library emits no CSS at all. What replaces it is
+ * a five-attribute contract on your own element, and a provider that configures behaviour
+ * rather than appearance.
+ */
+import DocPage from "../components/docs/DocPage.astro";
+import Section from "../components/docs/Section.astro";
+import Snippet from "../components/docs/Snippet.astro";
+import Demo from "../components/docs/Demo.astro";
+import Callout from "../components/docs/Callout.astro";
+import PropsTable from "../components/docs/PropsTable.astro";
+import Mistake from "../components/docs/Mistake.astro";
+import { href } from "../lib/site";
+import { AsyncButtonDemo } from "../components/demos/index.tsx";
+
+const noImportCode = `// There is no stylesheet to import. This line does not exist, in either package.
+import "@unruffled/react/styles.css";`;
+
+const attrsSourceCode = `/** Attributes for the element that triggers the action. */
+export interface ActionAttrs {
+  /** True while work is in flight, so assistive technology knows the region is updating. */
+  readonly "aria-busy": boolean;
+  /** True while activation is suppressed. Never paired with disabled. */
+  readonly "aria-disabled": true | undefined;
+  /** Present with an empty value while the pending affordance should render. */
+  readonly "data-pending": "" | undefined;
+  /** Raw machine state, for styling the full lifecycle. */
+  readonly "data-state": ActionStateValue;
+  /** Attempt number from the second attempt onwards, for retry copy. */
+  readonly "data-attempt": string | undefined;
+}`;
+
+const markupCode = `const save = useAction(() => api.saveCustomer(form), {
+  key: \`customer:\${id}\`,
+  announce: { success: "Customer saved" },
+});
+
+// Your element, your class name, your design system.
+<button {...save.triggerProps} className="btn btn--primary">
+  {save.pending ? "Saving..." : "Save customer"}
+</button>
+
+// What lands in the DOM while the request is in flight and the
+// 150ms delay has passed:
+//
+// <button type="button" class="btn btn--primary"
+//         aria-busy="true" aria-disabled="true"
+//         data-pending="" data-state="busy">`;
+
+const plainCssCode = `/* Nothing here is required. These are your selectors against the
+   library's attributes, and the attribute names are the whole contract. */
+
+.btn {
+  /* your tokens, your type scale, your radius */
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.5rem 0.9rem;
+  transition: opacity 120ms ease-out, border-color 120ms ease-out;
+}
+
+/* The pending affordance. Present only once the delay threshold has
+   passed, and guaranteed to stay for the minimum duration, so this
+   selector needs no transition-delay to avoid a flash. */
+.btn[data-pending] {
+  opacity: 0.72;
+  cursor: progress;
+}
+
+/* aria-disabled, never disabled. The element is still focusable, so it
+   still needs a focus ring: without this rule a keyboard user loses
+   their place visually while keeping it structurally. */
+.btn[aria-disabled="true"] {
+  cursor: default;
+}
+.btn[aria-disabled="true"]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* The lifecycle, all six states. settling and backoff are the two a
+   boolean cannot express. */
+.btn[data-state="settling"] { opacity: 0.72; }
+.btn[data-state="backoff"]  { border-color: var(--warning); }
+.btn[data-state="success"]  { border-color: var(--good); }
+.btn[data-state="error"]    { border-color: var(--danger); }
+
+/* Present from the second attempt onwards, and it carries the number. */
+.btn[data-attempt]::after {
+  content: " (attempt " attr(data-attempt) ")";
+  font-variant-numeric: tabular-nums;
+}`;
+
+const tailwindCode = `<button
+  {...save.triggerProps}
+  className="
+    inline-flex items-center gap-2 rounded-md border px-3 py-2
+    transition-opacity
+
+    data-[pending]:opacity-70
+    data-[pending]:cursor-progress
+
+    aria-disabled:cursor-default
+    focus-visible:outline focus-visible:outline-2
+
+    data-[state=settling]:opacity-70
+    data-[state=backoff]:border-amber-500
+    data-[state=success]:border-emerald-500
+    data-[state=error]:border-red-500
+  "
+>
+  {save.pending ? "Saving..." : "Save customer"}
+</button>`;
+
+const tailwindNotesCode = `// data-[pending] is an attribute-presence selector, not a value match.
+// The attribute is set to the empty string, so data-[pending=true] never
+// matches and data-[pending] always does while the affordance is up.
+
+// aria-disabled: is Tailwind's built-in variant and matches
+// aria-disabled="true". Do not reach for disabled:, because the library
+// never sets disabled and you should not either. See UX1005.
+
+// data-[state=...] matches the raw machine state. The six values are
+// idle, busy, settling, backoff, success and error.`;
+
+const providerCode = `import { Announcer, UnruffledProvider } from "@unruffled/react";
+
+export function App({ children }: { children: ReactNode }) {
+  return (
+    <UnruffledProvider
+      defaults={{
+        // Timing policy in one place, rather than per call site.
+        pending: { delay: 150, min: 400 },
+        // Two automatic retries, only for failures that could actually succeed.
+        retry: { attempts: 2, backoff: { baseMs: 500, factor: 2, maxMs: 30_000, jitter: 0.5 } },
+        // One message catalog for the whole application.
+        messages: { conflict: "Someone else edited this record. Reload to merge." },
+      }}
+    >
+      <Announcer />
+      {children}
+    </UnruffledProvider>
+  );
+}`;
+
+const classifyCode = `// One classifier for the whole application, rather than a taxonomy that
+// drifts between screens. Returning undefined keeps the default mapping,
+// so you special-case one status without restating the table.
+const classify = (failure: NormalizedFailure): FailureKind | undefined => {
+  if (failure.status === 402) return "forbidden";
+  if (failure.status === 423) return "conflict";
+  return undefined;
+};
+
+<UnruffledProvider defaults={{ classify }}>{children}</UnruffledProvider>`;
+
+const defaultMessagesCode = `const DEFAULT_MESSAGES: Record<FailureKind, string> = {
+  aborted: "Cancelled.",
+  offline: "You appear to be offline.",
+  auth: "Your session has expired. Sign in to continue.",
+  forbidden: "You do not have permission to do that.",
+  missing: "That item no longer exists.",
+  conflict: "Someone else changed this. Reload to see the latest version.",
+  validation: "Some details need fixing.",
+  rateLimited: "Too many requests. Try again shortly.",
+  retryable: "That did not go through. Try again.",
+  terminal: "Something went wrong.",
+};`;
+
+const localeCode = `// A catalog is a Partial<Record<FailureKind, string>>, so you override the
+// kinds you have copy for and the rest fall back to the defaults.
+const fr: Partial<Record<FailureKind, string>> = {
+  offline: "Vous semblez hors ligne.",
+  auth: "Votre session a expire. Connectez-vous pour continuer.",
+  forbidden: "Vous n'avez pas l'autorisation de faire cela.",
+  missing: "Cet element n'existe plus.",
+  conflict: "Quelqu'un d'autre a modifie ceci. Rechargez pour voir la derniere version.",
+  validation: "Certaines informations doivent etre corrigees.",
+  rateLimited: "Trop de requetes. Reessayez dans un instant.",
+  retryable: "L'operation a echoue. Reessayez.",
+  terminal: "Une erreur est survenue.",
+};
+
+// Application-wide.
+<UnruffledProvider defaults={{ messages: catalogs[locale] }}>{children}</UnruffledProvider>
+
+// Or per call site, merged on top of the provider's catalog.
+const save = useAction(saveCustomer, {
+  messages: { conflict: t("customer.conflict") },
+  announce: { success: t("customer.saved") },
+});`;
+
+const darkModeCode = `/* The library contributes no colour, so dark mode is entirely your
+   token definitions. The attribute selectors are identical in both. */
+:root {
+  --line: #d4d4d8;
+  --good: #047857;
+  --warning: #b45309;
+  --danger: #b91c1c;
+  --focus: #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --line: #3f3f46;
+    --good: #34d399;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --focus: #60a5fa;
+  }
+}`;
+
+const workedTsxCode = `import { useAction, useFailure } from "@unruffled/react";
+
+export function SaveCustomer({ id, form }: { id: string; form: CustomerForm }) {
+  const save = useAction(() => api.saveCustomer(id, form), {
+    key: \`customer:\${id}\`,
+    retry: { attempts: 2 },
+    announce: { success: "Customer saved" },
+    onError: (failure) => log.warn(failure.raw),
+  });
+
+  const failure = useFailure(save.failure);
+
+  return (
+    <div className="save">
+      <button {...save.triggerProps} className="btn btn--primary">
+        {/* data-pending drives the glyph in CSS; pending drives the label here.
+            They are the same boolean, read in the two places that need it. */}
+        <span className="btn__spinner" aria-hidden="true" />
+        <span className="btn__label">
+          {save.pending ? "Saving..." : save.status === "success" ? "Saved" : "Save customer"}
+        </span>
+      </button>
+
+      {save.state === "backoff" && save.retryInMs !== null ? (
+        <p className="save__retry">Retrying in {Math.ceil(save.retryInMs / 1000)}s</p>
+      ) : null}
+
+      {failure ? (
+        <p {...failure.summaryProps} className="save__error">
+          {failure.message}
+          {failure.canRetryNow ? (
+            <button type="button" onClick={save.retry}>Try again</button>
+          ) : null}
+        </p>
+      ) : null}
+    </div>
+  );
+}`;
+
+const workedCssCode = `/* The spinner is always in the DOM and hidden until the attribute says
+   otherwise. Mounting it on data-pending instead would animate from a
+   fresh element, which is the usual cause of a one-frame jump. */
+.btn__spinner {
+  width: 0.85em;
+  height: 0.85em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  display: none;
+}
+
+.btn[data-pending] .btn__spinner,
+.btn[data-state="backoff"] .btn__spinner {
+  display: inline-block;
+  animation: spin 700ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn[data-pending] .btn__spinner {
+    animation: none;
+    border-top-color: currentColor;
+    opacity: 0.45;
+  }
+}
+
+/* role="alert" comes from failure.summaryProps, and data-kind carries the
+   classification, so one element covers all ten kinds. */
+.save__error[data-kind="validation"] { color: var(--warning); }
+.save__error[data-kind="auth"]       { color: var(--danger); }
+.save__error[data-kind="rateLimited"] { color: var(--warning); }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}`;
+
+const disabledBad = `// disabled is typed as never on the overrides, so getTriggerProps rejects
+// one; added by hand like this it still compiles, and UX1005 is the rule
+// that describes it. Tailwind's disabled: variant has nothing to match either.
+<button {...save.triggerProps} disabled={save.pending} className="disabled:opacity-50">
+  Save
+</button>`;
+
+const disabledGood = `// The element stays focusable, reports aria-disabled and refuses to fire.
+// Style the state you were going to style anyway.
+<button {...save.triggerProps} className="aria-disabled:opacity-50">
+  {save.pending ? "Saving..." : "Save"}
+</button>`;
+
+const spinnerBad = `/* aria-busy is true from the first millisecond of the request, before
+   the 150ms delay has elapsed. Styling the spinner off it reintroduces
+   the flash the machine exists to prevent. */
+.btn[aria-busy="true"] .spinner { display: inline-block; }`;
+
+const spinnerGood = `/* data-pending is the visibility decision: delayed by 150ms, held for
+   400ms. aria-busy is the accessibility fact, and the two are
+   deliberately not the same boolean. */
+.btn[data-pending] .spinner { display: inline-block; }`;
+
+const attrRows = [
+  {
+    name: "aria-busy",
+    type: "boolean",
+    description:
+      'True while the request is in flight or settling, false otherwise. Always present, because React renders a false aria-* value as the string "false" rather than omitting it, so match on [aria-busy="true"].',
+    why: "Assistive technology needs to know the region is updating. It is set from the first millisecond of work, which is why it is the wrong hook for a spinner.",
+  },
+  {
+    name: "aria-disabled",
+    type: "true | undefined",
+    description:
+      "Set to true while activation is suppressed, and omitted entirely otherwise. Never paired with disabled.",
+    why: 'aria-disabled="false" is noise in the accessibility tree, so the undefined case renders no attribute at all.',
+  },
+  {
+    name: "data-pending",
+    type: '"" | undefined',
+    description:
+      'Present, with an empty value, exactly while the pending affordance should render. Match it as [data-pending], not [data-pending="true"].',
+    why: "This is the delay-and-minimum decision already made for you: it appears after 150ms and stays for at least 400ms, so your CSS can be naive.",
+  },
+  {
+    name: "data-state",
+    type: '"idle" | "busy" | "settling" | "backoff" | "success" | "error"',
+    description: "The raw machine state. All six values reach the DOM.",
+    why: "settling and backoff are the two that a boolean isPending cannot express, and they are the two worth styling differently.",
+  },
+  {
+    name: "data-attempt",
+    type: "string | undefined",
+    description:
+      "The attempt number, as a string, from the second attempt onwards. Omitted during the first attempt and when idle.",
+    why: "Retry copy needs the number, and the absence of the attribute on a first attempt means you can write the retry case without a counter in your own state.",
+  },
+];
+
+const stateRows = [
+  {
+    name: "idle",
+    type: "status: idle",
+    description: "Nothing has been triggered, or the action has been reset.",
+  },
+  {
+    name: "busy",
+    type: "status: pending",
+    description:
+      "A request is in flight. data-pending may or may not be present yet: that is the delay threshold, tracked as context rather than as a second state.",
+  },
+  {
+    name: "settling",
+    type: "status: pending",
+    description:
+      "The request has finished and the result is held while the minimum display duration runs out. data-pending is still present.",
+  },
+  {
+    name: "backoff",
+    type: "status: pending",
+    description:
+      "Waiting before an automatic retry. Observable so you can render a countdown from retryInMs instead of appearing to hang.",
+  },
+  {
+    name: "success",
+    type: "status: success",
+    description: "Settled with a value. Stays until the next trigger, or until resetAfterMs elapses.",
+  },
+  {
+    name: "error",
+    type: "status: error",
+    description: "Settled with a normalised failure. save.failure is non-null here.",
+  },
+];
+
+const defaultsRows = [
+  {
+    name: "pending",
+    type: "Partial<PendingPolicy>",
+    default: "{ delay: 150, min: 400 }",
+    description: "Pending affordance timing. Merged underneath the hook's own pending option.",
+    why: "A dense table may want no delay at all. Setting that per call site is how inconsistency gets into a product.",
+  },
+  {
+    name: "retry",
+    type: "RetryPolicy",
+    default: "none",
+    description:
+      "Automatic retries after the first attempt, with an optional backoff policy. attempts: 0 means manual retry only.",
+    why: "One policy for the application, rather than a different number of attempts on every screen.",
+  },
+  {
+    name: "classify",
+    type: "(failure: NormalizedFailure) => FailureKind | undefined",
+    default: "none",
+    description:
+      "Maps a normalised failure onto a different kind. Returning undefined keeps the default status mapping.",
+    why: "A bespoke status your API uses should be classified once, not re-interpreted in every component.",
+  },
+  {
+    name: "messages",
+    type: "Partial<Record<FailureKind, string>>",
+    default: "English defaults",
+    description: "User-facing failure copy, keyed by failure kind. Merged under the hook's own messages.",
+    why: "The taxonomy is the library's; the wording is yours. Localising should not mean re-implementing the classification.",
+  },
+  {
+    name: "announce",
+    type: "false",
+    default: "announcements on",
+    description:
+      "The only accepted value is false, which silences announcements application-wide. There is no true, because on is the default.",
+    why: "Making silence the opt-in would mean most applications never announce. The type exists so the opt-out is explicit and greppable.",
+  },
+];
+
+const providerRows = [
+  {
+    name: "defaults",
+    type: "UnruffledDefaults",
+    default: "{}",
+    description: "The behavioural defaults in the table above.",
+  },
+  {
+    name: "ports",
+    type: "Partial<Ports>",
+    default: "DOM ports",
+    description:
+      "Replaces individual ports. Mostly useful in tests and in documentation harnesses; this site uses it to drive the demos.",
+  },
+  {
+    name: "root",
+    type: "PortRoot",
+    default: "the document",
+    description:
+      "The owning document or shadow root for listener registration and focus reads. An app inside a shadow root or a secondary window sets it once here instead of at every hook.",
+  },
+];
+---
+
+<DocPage
+  title="Theming"
+  eyebrow="Concern"
+  path="theming"
+  lede="There is nothing to theme, because the library emits no CSS. What it emits is five attributes on your own element. This page is the full contract, how to style it in plain CSS and in Tailwind, and what the provider configures instead of appearance."
+  description="unruffled ships zero stylesheets. The styling surface is aria-busy, aria-disabled, data-pending, data-state and data-attempt on your own markup."
+  meta={[
+    { label: "Stylesheets shipped", value: "none" },
+    { label: "Class names emitted", value: "none" },
+    { label: "Inline styles", value: "one, on the live region" },
+  ]}
+>
+  <Section id="zero-stylesheets" title="The library ships zero stylesheets">
+    <p>
+      There is no theme object, no token set, no CSS variable to override and no stylesheet to import. Both
+      packages emit no CSS at all, so there is no cascade to fight and no specificity war to win.
+    </p>
+
+    <Snippet code={noImportCode} lang="ts" name="not a thing" />
+
+    <p>
+      The only element the library renders is <code>&lt;Announcer /&gt;</code>, and it renders two clipped
+      live regions that are never seen. Those carry the one inline style in the codebase, and it is semantics
+      rather than design: a live region has to be in the accessibility tree and out of the visual layout,
+      which rules out <code>display: none</code>,
+      <code>visibility: hidden</code> and the <code>hidden</code> attribute, all of which make the region silent.
+      It is inline rather than in a stylesheet precisely because there is no stylesheet &mdash; a live region that
+      depends on the consumer having imported CSS is a live region that is sometimes visible and sometimes silent.
+    </p>
+    <p>Three consequences, in the order you will notice them.</p>
+    <ul>
+      <li>
+        <strong>Your design system wins by default.</strong> Nothing in the library sets a colour, a radius, a font
+        or a spacing value, so there is nothing to undo before your button looks like your button.
+      </li>
+      <li>
+        <strong>The bundle has no CSS in it.</strong>
+        <code>@unruffled/react</code> and <code>@unruffled/core</code> together are 7.08&thinsp;kB brotli with everything
+        retained, and that number is all JavaScript.
+      </li>
+      <li>
+        <strong>There is no class name to keep in sync.</strong> The contract is five attributes, and attributes
+        do not collide with your utility classes or get hashed by your build.
+      </li>
+    </ul>
+  </Section>
+
+  <Section id="attribute-contract" title="What it gives you instead">
+    <p>
+      <code>useAction</code> returns <code>triggerProps</code>, which you spread onto your element. Five of
+      those props are the styling contract. The rest &mdash;
+      <code>type="button"</code>, <code>onClick</code>, <code>onKeyDown</code> and
+      <code>ref</code> &mdash; are behaviour, and are documented on the
+      <a href={href("components/use-action")}>useAction page</a>.
+    </p>
+
+    <Snippet code={attrsSourceCode} lang="ts" name="packages/core/src/machines/action/connect.ts" />
+
+    <PropsTable rows={attrRows} nameHeading="Attribute" />
+
+    <p>
+      Note what is not in that list. There is no <code>disabled</code>, and that is the single most
+      consequential decision in the library: a disabled element is removed from the tab order, so disabling a
+      button at the moment it is pressed throws focus to the top of the document and loses the user's place.
+      The element stays focusable, reports
+      <code>aria-disabled</code>, and has activation suppressed in the handlers instead. Rule
+      <a href={href("diagnostics/ux1005")}>UX1005</a> describes a <code>disabled</code> added by hand; it is one
+      of the four statically decidable rules and is reported by
+      <code>@unruffled/eslint-plugin</code>, which has not shipped, so nothing flags it at runtime in 0.1.0.
+    </p>
+
+    <h3>The six values of data-state</h3>
+    <p>
+      <code>data-state</code> is the raw machine state, not the four-value
+      <code>status</code>. Both are available; the attribute is the one you style from.
+    </p>
+
+    <PropsTable rows={stateRows} nameHeading="data-state" />
+
+    <Snippet code={markupCode} name="your markup" />
+
+    <Demo
+      title="The attributes, live"
+      hint="Open the inspector on the button and watch the attribute set change"
+      note="900ms latency against the default 150ms delay and 400ms minimum. data-state passes through busy and settling; data-pending appears late and leaves late."
+    >
+      <AsyncButtonDemo client:visible latencyMs={900} label="Save customer" />
+    </Demo>
+
+    <Callout tone="note" title="These are the whole surface">
+      <p>
+        If an attribute is not in the table above, the library does not set it. There is no wrapper element,
+        no portal and no injected node anywhere in the action path, so your layout is exactly the markup you
+        wrote.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="plain-css" title="Styling with plain CSS">
+    <p>
+      Attribute selectors, against your own class. Nothing below is required and nothing below is generated:
+      this is one worked stylesheet for one button.
+    </p>
+
+    <Snippet code={plainCssCode} lang="css" name="your stylesheet" />
+
+    <p>
+      The thing worth copying out of that file is what is missing: there is no
+      <code>transition-delay</code> guarding the spinner. You do not need one, because by the time
+      <code>[data-pending]</code> matches, the 150&thinsp;ms delay has already passed, and the result is already
+      held for 400&thinsp;ms afterwards. The timing lives in the machine, which is what lets the CSS stay this plain.
+      The <a href={href("animation")}>animation page</a> covers those two thresholds in detail.
+    </p>
+  </Section>
+
+  <Section id="tailwind" title="Styling with Tailwind">
+    <p>
+      Tailwind's arbitrary data variants map onto the contract directly, so there is no plugin and no
+      configuration to add. <code>data-[pending]:</code> matches attribute presence and
+      <code>data-[state=error]:</code> matches a value.
+    </p>
+
+    <Snippet code={tailwindCode} name="your component" />
+
+    <p>Three details that are easy to get wrong.</p>
+
+    <Snippet code={tailwindNotesCode} lang="ts" name="notes" />
+
+    <p>
+      <code>aria-disabled:</code> is a built-in variant, so the focusable-but-inert state needs no arbitrary selector.
+      Reach for it instead of <code>disabled:</code>, which has nothing to match here and never should.
+    </p>
+  </Section>
+
+  <Section id="configuring-behaviour" title="Configuring behaviour instead">
+    <p>
+      The provider is where a theme object would normally live, and it is deliberately behavioural only. There
+      is nothing in it about colour, radius, spacing or typography, because the library emits no visual and so
+      has no opinion to configure. It is also optional: every hook works without it, because a library that
+      only behaves correctly once a provider is wired has made its first run the thing most likely to be got
+      wrong.
+    </p>
+
+    <Snippet code={providerCode} name="src/App.tsx" />
+
+    <PropsTable rows={defaultsRows} nameHeading="defaults" />
+
+    <p>The provider itself takes three props.</p>
+
+    <PropsTable rows={providerRows} />
+
+    <p>
+      Defaults are merged underneath each call site, field by field for
+      <code>pending</code> and <code>messages</code>, and replaced wholesale for
+      <code>retry</code>, <code>classify</code> and <code>announce</code>. So a dense table can set
+      <code>pending: &#123; delay: 0 &#125;</code> and still inherit the 400&thinsp;ms minimum from the provider.
+    </p>
+
+    <Snippet code={classifyCode} lang="ts" name="classification" />
+
+    <Callout tone="warning" title="announce: false is the one default worth arguing about">
+      <p>
+        Setting it silences every announcement in the application. The library announces outcomes by default
+        &mdash; a success reads "Done." unless you give it better copy, and a failure reads the normalised
+        message assertively &mdash; and rule
+        <a href={href("diagnostics/ux1003")}>UX1003</a> fires when a pending state outlasts 400&thinsp;ms with no
+        live region mounted. Turning announcements off makes that rule go quiet without making the problem go away.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="localising" title="Localising the copy">
+    <p>
+      Failure copy is a catalog keyed by <code>FailureKind</code>. The taxonomy is the library's, the ten
+      strings are yours, and overriding one does not require restating the other nine. These are the defaults.
+    </p>
+
+    <Snippet code={defaultMessagesCode} lang="ts" name="packages/core/src/shared/normalizeError.ts" />
+
+    <p>
+      Pass a catalog to the provider for the application, or to a hook for one call site. A hook's catalog is
+      merged on top of the provider's, so a screen can specialise a single kind.
+    </p>
+
+    <Snippet code={localeCode} name="localised copy" />
+
+    <p>
+      Two strings are not in the catalog, and both are per-action rather than per-kind: the success
+      announcement, which defaults to "Done.", and the pending announcement, which is silent unless you supply
+      it. Those belong in <code>announce</code> on the call site, because "Customer saved" is not a translation
+      of a failure kind. The
+      <code>detail</code> field on a failure is never localised and never shown by default: it carries server text
+      verbatim for a collapsed technical disclosure, which is why it is kept separate from <code>message</code
+      >.
+    </p>
+
+    <Callout tone="note" title="Plain text, not markup">
+      <p>
+        Every string the library produces is destined for a text node. No field ever contains markup, and no
+        consumer should pass these strings to an HTML sink.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="dark-mode" title="Dark mode">
+    <p>
+      There is nothing to do. The library contributes no colour in either scheme, so there is no dark variant
+      to enable, no <code>data-theme</code> to thread through a provider and no second token set to keep in sync
+      with yours. You own every colour, which also means you own every contrast ratio.
+    </p>
+
+    <Snippet code={darkModeCode} lang="css" name="your tokens" />
+
+    <p>
+      The attribute selectors are identical in both schemes, so the lifecycle styling above is written once.
+      The only thing worth checking per scheme is that your
+      <code>[aria-disabled="true"]</code> treatment still meets contrast: because the element stays focusable, a
+      user can land on it with the keyboard, and a 40% opacity button that passes in light mode often fails in dark.
+    </p>
+  </Section>
+
+  <Section id="worked-example" title="A worked example">
+    <p>
+      One button, the full lifecycle, no library CSS. The component reads three values &mdash;
+      <code>pending</code> for the label, <code>state</code> for the backoff countdown and the normalised failure
+      for the summary &mdash; and the stylesheet does everything else from the attributes.
+    </p>
+
+    <Snippet code={workedTsxCode} name="SaveCustomer.tsx" />
+    <Snippet code={workedCssCode} lang="css" name="SaveCustomer.css" />
+
+    <p>
+      <code>failure.summaryProps</code> supplies <code>role="alert"</code> and
+      <code>data-kind</code>, so a single element styles all ten kinds and is announced on appearance without
+      a live region of its own. Do not pair it with a toast saying the same thing: the library already
+      announced the failure assertively.
+    </p>
+
+    <Mistake
+      title="Disabling the trigger to style it"
+      why="A disabled element leaves the tab order, so focus jumps to the top of the document at the moment the user pressed the button. The library gives you aria-disabled for exactly this, and disabled is typed as never on the overrides."
+      bad={disabledBad}
+      good={disabledGood}
+    />
+
+    <Mistake
+      title="Hanging the spinner off aria-busy"
+      why="aria-busy is true from the first millisecond of the request. data-pending is the visibility decision, delayed and held. Styling from the wrong one puts the flash back."
+      bad={spinnerBad}
+      good={spinnerGood}
+      lang="css"
+    />
+  </Section>
+</DocPage>

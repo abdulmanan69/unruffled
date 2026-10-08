@@ -1,0 +1,535 @@
+---
+/**
+ * Patterns.
+ *
+ * Recipes built only from what v0.1.0 actually ships: useAction, useFailure, Announcer,
+ * useAnnounce, UnruffledProvider and usePrefersReducedMotion. Where a primitive is planned
+ * rather than shipped, the pattern shows the honest workaround and says which primitive
+ * would replace it.
+ */
+import DocPage from "../components/docs/DocPage.astro";
+import Section from "../components/docs/Section.astro";
+import Snippet from "../components/docs/Snippet.astro";
+import Demo from "../components/docs/Demo.astro";
+import Callout from "../components/docs/Callout.astro";
+import Mistake from "../components/docs/Mistake.astro";
+import { href } from "../lib/site";
+import { AsyncButtonDemo, GuardDemo } from "../components/demos/index.tsx";
+
+const saveButtonCode = `import { useAction, useFailure } from "@unruffled/react";
+
+export function SaveCustomer({ id, form }: { id: string; form: CustomerForm }) {
+  const save = useAction((_: void, signal) => api.saveCustomer(id, form, signal), {
+    key: \`customer:\${id}\`,
+    announce: { success: "Customer saved" },
+    onError: (failure) => log.warn({ id, failure: failure.raw }),
+  });
+
+  const failure = useFailure(save.failure);
+
+  return (
+    <>
+      <button {...save.triggerProps} className="btn btn--primary">
+        {save.pending ? "Saving..." : "Save customer"}
+      </button>
+
+      {failure ? (
+        <p {...failure.summaryProps}>
+          {failure.message}
+          {failure.canRetryNow ? (
+            <button type="button" onClick={save.retry}>Try again</button>
+          ) : null}
+        </p>
+      ) : null}
+    </>
+  );
+}`;
+
+const destructiveCode = `// useConfirm is on the roadmap. Until it ships, the dialog is yours and
+// the only thing the library needs from you is the truth about whether a
+// recovery path exists.
+
+function DeleteCustomer({ id }: { id: string }) {
+  const [asking, setAsking] = useState(false);
+
+  const remove = useAction((_: void, signal) => api.deleteCustomer(id, signal), {
+    key: \`customer:\${id}\`,
+    destructive: true,
+    // Set because the dialog below is a real confirmation step. Setting it
+    // without one would silence UX1001 while leaving the hazard in place.
+    reversible: true,
+    announce: { success: "Customer deleted" },
+    onSuccess: () => router.push("/customers"),
+    onError: (failure) => toast(failure.message),
+  });
+
+  return (
+    <>
+      <button type="button" onClick={() => setAsking(true)}>Delete customer</button>
+
+      {asking ? (
+        <YourDialog
+          title="Delete this customer?"
+          body="This removes the record and its 42 invoices. It cannot be undone."
+          confirmLabel="Delete customer"
+          onCancel={() => setAsking(false)}
+          // The trigger lives on the dialog's confirm button, so the guard,
+          // the thresholds and the announcement all apply to the real action
+          // rather than to opening the dialog.
+          confirmProps={remove.triggerProps}
+        />
+      ) : null}
+    </>
+  );
+}`;
+
+const rowActionCode = `// One hook per row, one key per row. The key is the resource, not the
+// component, so the same row rendered in a second place contends with this
+// one and the duplicate is rejected synchronously.
+
+function InvoiceRow({ invoice }: { invoice: Invoice }) {
+  const archive = useAction((_: void, signal) => api.archiveInvoice(invoice.id, signal), {
+    key: \`invoice:\${invoice.id}:archive\`,
+    pending: { delay: 0, min: 200 },
+    announce: { success: \`Invoice \${invoice.number} archived\` },
+    onError: (failure) => toast(failure.message),
+  });
+
+  return (
+    <tr data-state={archive.state}>
+      <td>{invoice.number}</td>
+      <td>
+        {/* The row's own click handler must not treat a refused click as a
+            selection. triggerProps already stops propagation when activation
+            is suppressed, so no guard is needed here. */}
+        <button {...archive.triggerProps} className="row__action">
+          {archive.pending ? "Archiving..." : "Archive"}
+        </button>
+      </td>
+    </tr>
+  );
+}`;
+
+const formSubmitCode = `import { useForm } from "react-hook-form";
+import { useAction, useFailure } from "@unruffled/react";
+
+function CustomerForm({ id }: { id: string }) {
+  const { handleSubmit, setError, getValues } = useForm<Values>();
+
+  const submit = useAction((_: void, signal) => api.saveCustomer(id, getValues(), signal), {
+    key: \`customer:\${id}\`,
+    announce: { success: "Customer saved" },
+    onError: (failure) => {
+      // fields is present for the validation kind, which is 422, or 400 when
+      // the body carries field errors. Each entry is a dotted path and a
+      // message, normalised from RFC 9457, JSON:API, field_errors maps and
+      // flat [{ path, message }] lists.
+      for (const field of failure.fields ?? []) {
+        setError(field.path as Path<Values>, { message: field.message });
+      }
+    },
+  });
+
+  const failure = useFailure(submit.failure);
+
+  return (
+    // The library's handler is on the button, not the form, so the guard is
+    // taken before the form library's async validation runs.
+    <form onSubmit={handleSubmit(() => {})}>
+      <Fields />
+
+      {/* A validation failure belongs on the fields, never in the summary. */}
+      {failure && failure.kind !== "validation" ? (
+        <p {...failure.summaryProps}>{failure.message}</p>
+      ) : null}
+
+      <button {...submit.triggerProps}>
+        {submit.pending ? "Saving..." : "Save"}
+      </button>
+    </form>
+  );
+}`;
+
+const bulkCode = `// useBulkAction is on the roadmap, and what it will add is per-item
+// progress and partial-failure reporting. Today one action over the
+// selection, with the partial result counted yourself, is the honest shape.
+
+function BulkArchive({ selected }: { selected: readonly string[] }) {
+  // The outcome string depends on a count the machine cannot know in advance,
+  // so the announcement is written by hand rather than by the action.
+  const { announce } = useAnnounce();
+
+  const archive = useAction(async (_: void, signal) => {
+    const results = await Promise.allSettled(
+      selected.map((id) => api.archiveInvoice(id, signal)),
+    );
+    const failed = results.filter((r) => r.status === "rejected").length;
+    // Rejecting on a partial failure would report all of it as failed, which
+    // is not what happened. Resolve with the counts and tell the user.
+    return { total: results.length, failed };
+  }, {
+    key: "invoices:archive",
+    announce: false,
+    onSuccess: ({ total, failed }) => {
+      announce(
+        failed === 0
+          ? \`\${total} invoices archived\`
+          : \`\${total - failed} of \${total} archived, \${failed} failed\`,
+        failed === 0 ? "polite" : "assertive",
+      );
+    },
+    onError: (failure) => announce(failure.message, "assertive"),
+  });
+
+  return (
+    <button {...archive.triggerProps} className="toolbar__action">
+      {archive.pending ? \`Archiving \${selected.length}...\` : \`Archive \${selected.length}\`}
+    </button>
+  );
+}`;
+
+const queryCode = `import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAction, useFailure } from "@unruffled/react";
+
+function SaveCustomer({ id, form }: { id: string; form: CustomerForm }) {
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: (values: CustomerForm) => api.saveCustomer(id, values),
+    // Leave the mutation's own retry off. Two retry policies on one request
+    // multiply: three attempts here against two there is six requests.
+    retry: 0,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["customer", id] }),
+  });
+
+  const save = useAction(() => mutation.mutateAsync(form), {
+    key: \`customer:\${id}\`,
+    retry: { attempts: 2 },
+    announce: { success: "Customer saved" },
+    onError: (failure) => log.warn(failure.raw),
+  });
+
+  const failure = useFailure(save.failure);
+
+  // Read pending from save, not from mutation. mutation.isPending is true from
+  // the first millisecond; save.pending is the one that waits 150ms and holds
+  // for 400ms.
+  return (
+    <button {...save.triggerProps}>
+      {save.pending ? "Saving..." : "Save customer"}
+    </button>
+  );
+}`;
+
+const offlineCode = `// online is read at classification time, so a request that fails with no
+// network is labelled offline rather than reported as a generic error. The
+// default implementation is navigator.onLine, which is why nothing below is
+// required to get the offline kind.
+
+const save = useAction((_: void, signal) => api.saveCustomer(id, form, signal), {
+  key: \`customer:\${id}\`,
+  // Automatic retries stay off for this one. offline has canRetry true, so a
+  // retry policy would fire it on a timer while the user is still in a tunnel.
+  retry: { attempts: 0 },
+  announce: { success: "Customer saved" },
+  onError: (failure) => log.warn(failure.kind),
+  // Only override this if navigator.onLine is wrong for your environment, for
+  // example behind a captive portal or in a test.
+  online: () => connectivity.isReachable(),
+});
+
+const failure = useFailure(save.failure);
+
+// offline is retryable, but only once the network is back. Gate the
+// affordance on the browser's own signal rather than on a timer.
+{failure?.kind === "offline" ? (
+  <p {...failure.summaryProps}>
+    {failure.message}
+    <button type="button" onClick={save.retry}>Try again</button>
+  </p>
+) : null}`;
+
+const rateLimitCode = `// rateLimited is the one kind with a stated delay. useFailure reads
+// Retry-After from the response, measures from when the failure arrived, and
+// counts down live through the frame port.
+
+const failure = useFailure(save.failure);
+
+{failure?.kind === "rateLimited" ? (
+  <p {...failure.summaryProps}>
+    {failure.message}
+    {failure.canRetryNow ? (
+      <button type="button" onClick={save.retry}>Try again</button>
+    ) : failure.retryInMs !== null ? (
+      <span>Try again in {Math.ceil(failure.retryInMs / 1000)}s</span>
+    ) : null}
+  </p>
+) : null}`;
+
+const keyBad = `// Two buttons, two hooks, no key. Each one has its own boolean, so each
+// one accepts its own click and both writes land in nondeterministic order.
+// UX1002 reports the overlap it can see.
+const saveTop = useAction(() => api.saveCustomer(id, form));
+const saveBottom = useAction(() => api.saveCustomer(id, form));`;
+
+const keyGood = `// One key, derived from the resource. The guard is a read of the
+// process-wide registry taken synchronously inside the handler, so the
+// second press is refused before any await.
+const options = { key: \`customer:\${id}\` };
+const saveTop = useAction(() => api.saveCustomer(id, form), options);
+const saveBottom = useAction(() => api.saveCustomer(id, form), options);`;
+
+const toastBad = `// The library already announced the failure assertively, and
+// summaryProps already carries role="alert". A toast on top of that reads
+// the same sentence twice to a screen-reader user.
+const save = useAction(saveCustomer, {
+  onError: (failure) => toast.error(failure.message),
+});
+
+const failure = useFailure(save.failure);
+{failure ? <p {...failure.summaryProps}>{failure.message}</p> : null}`;
+
+const toastGood = `// Pick one surface per failure. Inline here, with the log kept for you
+// rather than for the user.
+const save = useAction(saveCustomer, {
+  onError: (failure) => log.warn(failure.raw),
+});
+
+const failure = useFailure(save.failure);
+{failure ? <p {...failure.summaryProps}>{failure.message}</p> : null}`;
+---
+
+<DocPage
+  title="Patterns"
+  eyebrow="Concern"
+  path="patterns"
+  lede="Seven recipes built only from what ships today: useAction, useFailure, Announcer, useAnnounce and the provider. Where a primitive is planned rather than shipped, the pattern shows the workaround and names what will replace it."
+  description="Save buttons, destructive actions, row actions, form submits, bulk toolbars, TanStack Query and offline handling, built from the primitives in v0.1.0."
+  meta={[
+    { label: "Primitives used", value: "useAction, useFailure" },
+    { label: "Runtime dependencies", value: "zero" },
+    { label: "Tests behind these", value: "50" },
+  ]}
+>
+  <Section id="shipped-only" title="What these are built from">
+    <p>
+      Every snippet on this page uses only what v0.1.0 ships:
+      <code>useAction</code>, <code>useFailure</code>, <code>Announcer</code>,
+      <code>useAnnounce</code>, <code>UnruffledProvider</code>,
+      <code>usePrefersReducedMotion</code>, the <code>useMachine</code> and
+      <code>useCountdown</code> adapters, <code>createDomPorts</code> and the
+      <code>@unruffled/testing</code> helpers.
+    </p>
+    <p>
+      Two patterns below would be shorter with a primitive that is planned and not written yet. Both say so in
+      the section rather than in a footnote, and both show the shape you would write today. The <a
+        href={href("roadmap")}>roadmap</a
+      > is the list of what is coming; nothing on it is importable.
+    </p>
+    <Callout tone="note" title="One thing to do first">
+      <p>
+        Render <code>&lt;Announcer /&gt;</code> once near the root. Announcement is on by default throughout the
+        library, so mounting the region is the only step, and rule
+        <a href={href("diagnostics/ux1003")}>UX1003</a> reports a pending state that outlasted 400&thinsp;ms with
+        no region mounted.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="save-button" title="The save button">
+    <p>
+      The base case, and the one the rest are variations on. One hook, one key derived from the record, the
+      label read from <code>pending</code> and the failure read through
+      <code>useFailure</code>. The guard is taken inside the event handler before any
+      <code>await</code>, so the second press is refused rather than queued.
+    </p>
+
+    <Snippet code={saveButtonCode} name="SaveCustomer.tsx" />
+
+    <p>
+      <strong>What it buys.</strong> No double submit, no spinner flash under 150&thinsp;ms, no flicker above it,
+      an aborted request on unmount, an announced outcome, and a retry button that only appears when retrying could
+      actually work.
+    </p>
+
+    <Demo
+      title="The save button, as written above"
+      hint="Press it twice quickly"
+      note="900ms latency. The second press is swallowed synchronously; the button never leaves the tab order."
+    >
+      <AsyncButtonDemo client:visible latencyMs={900} label="Save customer" />
+    </Demo>
+  </Section>
+
+  <Section id="destructive" title="The destructive action, without a confirm primitive">
+    <p>
+      <code>useConfirm</code> is on the roadmap and is not shipped, so the dialog is yours. What the library contributes
+      today is the honesty check: set <code>destructive: true</code> and rule
+      <a href={href("diagnostics/ux1001")}>UX1001</a> is reported the first time the action is triggered, with your
+      call site, until a recovery path exists. Reports are de-duplicated per code per call site, so it says it once
+      rather than once per press. Set
+      <code>reversible: true</code> once your own confirmation or undo window is genuinely in front of the action,
+      and put <code>triggerProps</code> on the dialog's confirm button rather than on the button that opens the
+      dialog.
+    </p>
+
+    <Snippet code={destructiveCode} name="DeleteCustomer.tsx" />
+
+    <p>
+      <strong>What it buys.</strong> A delete that cannot be fired twice, is announced, and will not ship to production
+      with no confirmation step &mdash; because the diagnostic names the file and the line until one exists.
+    </p>
+
+    <Callout tone="warning" title="reversible is a claim, not a flag">
+      <p>
+        Setting it with no dialog and no undo path silences UX1001 and leaves the hazard exactly where it was.
+        The rule is a reminder, and the only honest ways to satisfy it are a confirmation step or a recovery
+        path.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="row-action" title="The row action in a list">
+    <p>
+      One hook per row, and the key derived from the row's identity rather than from the component. That
+      distinction is the whole point of keys: two buttons in two subtrees that write the same record contend,
+      and a boolean on one hook cannot express that. A dense list usually also wants
+      <code>pending: &#123; delay: 0, min: 200 &#125;</code>, because the row needs to look touched
+      immediately.
+    </p>
+
+    <Snippet code={rowActionCode} name="InvoiceRow.tsx" />
+
+    <p>
+      <strong>What it buys.</strong> Independent per-row state with no shared pending flag, the same row guarded
+      across the whole tree, and no refused click leaking up into the row's selection handler.
+    </p>
+
+    <Demo
+      title="Two triggers, one resource key"
+      hint="Press either button, then press the other immediately"
+      note="With the key on, the second press is rejected synchronously by the process-wide registry rather than by a render. Turn it off and both writes land."
+    >
+      <GuardDemo client:visible />
+    </Demo>
+  </Section>
+
+  <Section id="form-submit" title="The form submit">
+    <p>
+      A validation failure belongs on the fields and never in a toast, which is why
+      <code>normalizeError</code> extracts them: <code>failure.fields</code> is a list of dotted paths and messages,
+      normalised from RFC 9457 <code>application/problem+json</code>, JSON:API
+      <code>errors[].source.pointer</code>, Rails and DRF <code>field_errors</code> maps and flat
+      <code>[&#123; path, message &#125;]</code> lists. Push them into your form library from
+      <code>onError</code> and keep the summary for everything that is not
+      <code>validation</code>.
+    </p>
+
+    <Snippet code={formSubmitCode} name="CustomerForm.tsx" />
+
+    <p>
+      <strong>What it buys.</strong> One mapping from five server error shapes onto your form library, field errors
+      on the fields, and a guard that holds even when the form library validates asynchronously &mdash; which is
+      the case where two clicks both clear validation before either one mutates.
+    </p>
+  </Section>
+
+  <Section id="bulk" title="The toolbar bulk button">
+    <p>
+      <code>useBulkAction</code> is on the roadmap; what it will add is per-item progress and partial-failure reporting.
+      Today, model the bulk as one action over the selection and count the partial result yourself. The important
+      decision is not to reject on a partial failure: rejecting reports the whole batch as failed, which is not
+      what happened.
+    </p>
+
+    <Snippet code={bulkCode} name="BulkArchive.tsx" />
+
+    <p>
+      <strong>What it buys.</strong> One guard over the whole batch, one abort signal that propagates to every request,
+      and an announcement that states the real counts instead of "Done." &mdash; which is why this is the one case
+      where turning the built-in announcement off and using <code>useAnnounce</code> is correct.
+    </p>
+  </Section>
+
+  <Section id="tanstack-query" title="Pairing with TanStack Query">
+    <p>
+      These do not compete. Query owns the cache: deduplication of reads, invalidation, background refetch,
+      optimistic cache updates and the server state itself. unruffled owns the interaction: the synchronous
+      duplicate guard, the two pending thresholds, failure classification, the retry countdown, the
+      announcement and focus. Wrap <code>mutateAsync</code> in
+      <code>useAction</code> and each layer keeps its own job.
+    </p>
+
+    <Snippet code={queryCode} name="SaveCustomer.tsx" />
+
+    <p>Three rules make the pairing clean.</p>
+    <ul>
+      <li>
+        <strong>Read pending from <code>useAction</code>, not from the mutation.</strong>
+        <code>mutation.isPending</code> is true from the first millisecond. <code>save.pending</code>
+        is the one that waits 150&thinsp;ms and holds for 400&thinsp;ms, which is the behaviour you wanted the flag
+        for.
+      </li>
+      <li>
+        <strong>Pick one retry policy.</strong> Set <code>retry: 0</code> on the mutation if you use
+        <code>retry</code> on the action. Two policies on one request multiply, and the user sees a button that
+        has quietly sent six requests.
+      </li>
+      <li>
+        <strong>Invalidate in the mutation, announce in the action.</strong> Cache work belongs where the cache
+        is; the sentence the user hears belongs where the interaction is.
+      </li>
+    </ul>
+
+    <p>
+      <strong>What it buys.</strong> Query's cache semantics unchanged, plus a guard that fires before <code
+        >mutateAsync</code
+      > is ever called, a failure taxonomy richer than
+      <code>error.message</code>, and an honest retry affordance instead of a button left enabled on a 403.
+    </p>
+  </Section>
+
+  <Section id="offline" title="Offline handling">
+    <p>
+      An offline failure is classified as <code>offline</code> rather than reported as a generic network error,
+      because <code>online</code> is read at classification time. The default implementation is <code
+        >navigator.onLine</code
+      >, so you get the kind without configuring anything; override it only when that signal is wrong for your
+      environment.
+    </p>
+
+    <Snippet code={offlineCode} name="offline" />
+
+    <p>
+      <code>offline</code> has <code>canRetry</code> true, so a retry affordance is honest. Leave automatic retries
+      at zero for it: a retry policy fires on a timer, and a timer is the wrong thing to attach to a condition the
+      user resolves by walking out of a tunnel. The one kind with a real delay to honour is <code
+        >rateLimited</code
+      >, and that one counts down.
+    </p>
+
+    <Snippet code={rateLimitCode} name="rate limited" />
+
+    <p>
+      <strong>What it buys.</strong> "You appear to be offline" instead of "Failed to fetch", a retry affordance
+      whose presence is a true statement, and a rate-limit countdown read from <code>Retry-After</code> rather than
+      a button left enabled for the user to hammer.
+    </p>
+  </Section>
+
+  <Section id="mistakes" title="Two mistakes that survive code review">
+    <Mistake
+      title="Relying on two booleans instead of one key"
+      why="A pending flag lives on a hook instance. The resource does not. Two components writing the same record each accept their own click, and the order the writes land in depends on network timing."
+      bad={keyBad}
+      good={keyGood}
+    />
+
+    <Mistake
+      title="A toast on top of the announcement"
+      why="The library announces failures assertively, and summaryProps already carries role=alert. Adding a toast means a screen-reader user hears the same sentence twice, which is the surest way to get announcements switched off in your application."
+      bad={toastBad}
+      good={toastGood}
+    />
+  </Section>
+</DocPage>

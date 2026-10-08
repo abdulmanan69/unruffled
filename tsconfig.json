@@ -9,12 +9,7 @@
       "@unruffled/core/*": ["./packages/core/src/*"],
       "@unruffled/react": ["./packages/react/src/index.ts"],
       "@unruffled/react/*": ["./packages/react/src/*"],
-      "@unruffled/query": ["./packages/query/src/index.ts"],
-      "@unruffled/form": ["./packages/form/src/index.ts"],
-      "@unruffled/devtools": ["./packages/devtools/src/index.ts"],
-      "@unruffled/testing": ["./packages/testing/src/index.ts"],
-      "@unruffled/intl": ["./packages/intl/src/index.ts"],
-      "@unruffled/intl/*": ["./packages/intl/src/*"]
+      "@unruffled/testing": ["./packages/testing/src/index.ts"]
     }
   },
   "include": [

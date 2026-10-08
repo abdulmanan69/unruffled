@@ -41,14 +41,21 @@ export interface AsyncButtonDemoProps {
  * Shows the three things a reader should notice immediately — the label changes rather than
  * the button disappearing, the control keeps focus, and the outcome persists.
  */
-export function AsyncButtonDemo({ latencyMs = 900, label = "Save customer", fails = false }: AsyncButtonDemoProps) {
-  const save = useAction(delayed(latencyMs, () => (fails ? { status: 503 } : "saved"), fails), {
-    key: "demo:customer:42",
-    announce: { success: "Customer saved", error: "Save failed" },
-    onError: () => {
-      // The demo renders the state itself.
+export function AsyncButtonDemo({
+  latencyMs = 900,
+  label = "Save customer",
+  fails = false,
+}: AsyncButtonDemoProps) {
+  const save = useAction(
+    delayed(latencyMs, () => (fails ? { status: 503 } : "saved"), fails),
+    {
+      key: "demo:customer:42",
+      announce: { success: "Customer saved", error: "Save failed" },
+      onError: () => {
+        // The demo renders the state itself.
+      },
     },
-  });
+  );
 
   return (
     <div className="demo-row">
@@ -101,17 +108,23 @@ export function GuardDemo() {
     setLog((previous) => [`${who} wrote the record`, ...previous].slice(0, 6));
   };
 
-  const toolbar = useAction(delayed(1400, () => "done"), {
-    ...(keyed ? { key: "demo:invoice:7" } : {}),
-    announce: false as const,
-    onSuccess: record("Toolbar button"),
-  });
+  const toolbar = useAction(
+    delayed(1400, () => "done"),
+    {
+      ...(keyed ? { key: "demo:invoice:7" } : {}),
+      announce: false as const,
+      onSuccess: record("Toolbar button"),
+    },
+  );
 
-  const row = useAction(delayed(1400, () => "done"), {
-    ...(keyed ? { key: "demo:invoice:7" } : {}),
-    announce: false as const,
-    onSuccess: record("Row action"),
-  });
+  const row = useAction(
+    delayed(1400, () => "done"),
+    {
+      ...(keyed ? { key: "demo:invoice:7" } : {}),
+      announce: false as const,
+      onSuccess: record("Row action"),
+    },
+  );
 
   return (
     <div className="demo-stack">
@@ -266,7 +279,11 @@ export function AnnouncerDemo() {
         <button type="button" className="btn" onClick={say("Customer saved", "polite")}>
           Announce politely
         </button>
-        <button type="button" className="btn btn--danger" onClick={say("Save failed. Try again.", "assertive")}>
+        <button
+          type="button"
+          className="btn btn--danger"
+          onClick={say("Save failed. Try again.", "assertive")}
+        >
           Announce assertively
         </button>
       </div>
@@ -393,8 +410,8 @@ export function RetryDemo() {
       </dl>
 
       <p className="demo-hint">
-        The countdown is a real value from the frame port, bucketed so it re-renders ten times a second
-        rather than sixty.
+        The countdown is a real value from the frame port, bucketed so it re-renders ten times a second rather
+        than sixty.
       </p>
     </div>
   );

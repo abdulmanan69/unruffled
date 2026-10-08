@@ -1,0 +1,502 @@
+---
+/**
+ * Getting started.
+ *
+ * The most important page on the site, and it is not a tutorial. A senior engineer does not
+ * need to be shown how to call a hook; they need to be shown that the twenty lines they
+ * already wrote are wrong in six specific ways. So the page opens with their code, names
+ * each defect precisely enough to be checked, and only then replaces it.
+ */
+import DocPage from "../components/docs/DocPage.astro";
+import Section from "../components/docs/Section.astro";
+import Snippet from "../components/docs/Snippet.astro";
+import Demo from "../components/docs/Demo.astro";
+import Callout from "../components/docs/Callout.astro";
+import PropsTable from "../components/docs/PropsTable.astro";
+import Keys from "../components/docs/Keys.astro";
+import Mistake from "../components/docs/Mistake.astro";
+import { AsyncButtonDemo } from "../components/demos/index.tsx";
+import { href } from "../lib/site";
+
+const handRolled = `import { useState } from "react";
+
+export function SaveCustomerButton({ customer }: { customer: Customer }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onClick() {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.saveCustomer(customer);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <button onClick={onClick} disabled={saving}>
+        {saving ? "Saving…" : "Save customer"}
+      </button>
+      {error ? <p className="error">{error}</p> : null}
+    </>
+  );
+}`;
+
+const replacement = `import { useAction, useFailure } from "@unruffled/react";
+
+export function SaveCustomerButton({ customer }: { customer: Customer }) {
+  const save = useAction(
+    (_args: void, signal: AbortSignal) => api.saveCustomer(customer, signal),
+    {
+      key: \`customer:\${customer.id}\`,
+      announce: { success: "Customer saved" },
+    },
+  );
+  const failure = useFailure(save.failure);
+
+  return (
+    <>
+      <button {...save.triggerProps}>
+        {save.pending ? "Saving…" : "Save customer"}
+      </button>
+      {failure ? <p {...failure.summaryProps}>{failure.message}</p> : null}
+    </>
+  );
+}`;
+
+const disabledBad = `<button
+  {...save.triggerProps}
+  disabled={save.pending}
+>
+  {save.pending ? "Saving…" : "Save"}
+</button>`;
+
+const disabledGood = `<button {...save.triggerProps}>
+  {save.pending ? "Saving…" : "Save"}
+</button>`;
+
+const failureHandling = `const failure = useFailure(save.failure);
+
+if (!failure) return null;
+
+return (
+  <div {...failure.summaryProps}>
+    <p>{failure.message}</p>
+
+    {/* Field errors belong on the form, never in a toast. */}
+    {failure.kind === "validation" && failure.fields ? (
+      <ul>
+        {failure.fields.map((field) => (
+          <li key={field.path}>
+            {field.path}: {field.message}
+          </li>
+        ))}
+      </ul>
+    ) : null}
+
+    {/* Honest: absent on a 403 or a validation error. */}
+    {failure.canRetryNow ? (
+      <button onClick={save.retry}>Try again</button>
+    ) : null}
+
+    {/* Present on a 429 with Retry-After, counting down live. */}
+    {failure.retryInMs ? (
+      <p>Try again in {Math.ceil(failure.retryInMs / 1000)}s</p>
+    ) : null}
+
+    {/* Technical text, collapsed. Never shown by default. */}
+    {failure.detail ? (
+      <details>
+        <summary>Details</summary>
+        <pre>{failure.detail}</pre>
+      </details>
+    ) : null}
+  </div>
+);`;
+
+const apiRows = [
+  {
+    name: "state",
+    type: '"idle" | "busy" | "settling" | "backoff" | "success" | "error"',
+    description:
+      "The raw machine state. Six values, because a fast action must not flash and a shown affordance must not flicker, and the waiting period before an automatic retry must be observable.",
+    why: "Spread onto the trigger as data-state, so you can style the full lifecycle in CSS without reading any of this in JavaScript.",
+  },
+  {
+    name: "status",
+    type: '"idle" | "pending" | "success" | "error"',
+    description:
+      "The four states a user can distinguish. settling and backoff collapse into pending, because from the user's point of view the action has not finished.",
+    why: "Branch on this. Branch on state only when you are styling the timing itself.",
+  },
+  {
+    name: "pending",
+    type: "boolean",
+    description:
+      "Whether the pending affordance should render. False during the first 150 ms even though work has started, and still true while a settled result is held back to meet the 400 ms minimum.",
+    why: "This is the value your spinner reads. It is not the same question as whether work is in flight.",
+  },
+  {
+    name: "busy",
+    type: "boolean",
+    description:
+      "Whether work is in flight or settling. True for the whole of busy, settling and backoff, including the first 150 ms when nothing is shown.",
+    why: "Drives aria-busy and the activation guard, not the spinner. A screen reader should know the region is updating before a sighted user sees anything.",
+  },
+  {
+    name: "data",
+    type: "T | null",
+    description: "The resolved value of the last successful attempt, or null.",
+  },
+  {
+    name: "failure",
+    type: "NormalizedFailure | null",
+    description:
+      "The classified failure: kind, user-facing message, optional detail, status, retryAfterMs, field errors, canRetry and the raw value. Pass it to useFailure for the retry window and the alert props.",
+  },
+  {
+    name: "attempt",
+    type: "number",
+    description: "0 when idle, 1 during the first attempt, higher while retrying.",
+    why: "Exposed as data-attempt from the second attempt onwards, which is what lets retry copy appear without a second piece of state.",
+  },
+  {
+    name: "canRetry",
+    type: "boolean",
+    description:
+      "Whether offering a retry affordance is honest for the current failure. False for aborted, auth, forbidden, missing, validation and terminal.",
+    why: "A retry button on a 403 is a lie: the same request fails the same way. This is the field that stops you shipping one.",
+  },
+  {
+    name: "retryAt",
+    type: "number | null",
+    description: "Clock reading at which an automatic retry fires, or null when none is scheduled.",
+    why: "A reading rather than a duration, because a duration is stale the moment it is read. Use retryInMs below unless you are doing your own timing.",
+  },
+  {
+    name: "trigger",
+    type: "(args: A) => void",
+    description:
+      "Starts the action. Already wired into triggerProps; call it directly for an action with no element, such as one fired by a keyboard shortcut.",
+  },
+  {
+    name: "retry",
+    type: "() => void",
+    description:
+      "Re-runs the failed attempt with the same arguments. Accepted from error and from backoff, where it fires the pending retry immediately.",
+  },
+  {
+    name: "reset",
+    type: "() => void",
+    description: "Clears the outcome and returns to idle, discarding data, failure and the attempt count.",
+  },
+  {
+    name: "cancel",
+    type: "() => void",
+    description:
+      "Aborts the request in flight and returns to idle without reporting a failure. The abort is not surfaced, not retried and not announced, because the user did not ask for it to be reported.",
+  },
+  {
+    name: "attrs",
+    type: "ActionAttrs",
+    description:
+      "The framework-neutral attribute bag behind triggerProps: aria-busy, aria-disabled, data-pending, data-state, data-attempt. Read it when you are driving a non-React renderer or composing props by hand.",
+    why: 'False values are omitted rather than rendered, because aria-disabled="false" is noise in the accessibility tree.',
+  },
+  {
+    name: "triggerProps",
+    type: "TriggerProps",
+    description:
+      'Spread onto the trigger. The attrs above, plus type="button", an onClick, an onKeyDown and a ref. React only.',
+    why: "There is no disabled, and the type will not let you add one.",
+  },
+  {
+    name: "getTriggerProps",
+    type: "(overrides?: TriggerPropOverrides<A>) => TriggerProps",
+    description:
+      "The same props with your own args, onClick, onKeyDown and ref composed in. Your handlers run after the library's, and only when the activation was not suppressed. React only.",
+    why: "Use this for a parameterised action: pass args here rather than wrapping trigger in an arrow function.",
+  },
+  {
+    name: "retryInMs",
+    type: "number | null",
+    description:
+      "Milliseconds until an automatic retry fires, or null. A live value driven by the frame port. React only.",
+    why: "Under reduced motion it updates once a second instead of every frame. The number stays accurate, it simply stops animating, because the information is the point.",
+  },
+];
+
+const keyRows = [
+  {
+    keys: ["Enter"],
+    action:
+      "Runs the action once. A native button already turns this into a click, so the library does not fire a second time.",
+  },
+  {
+    keys: ["Space"],
+    action:
+      'Same as Enter. On a non-button element given role="button", the library synthesises the activation itself.',
+  },
+  {
+    keys: ["Enter"],
+    action:
+      "While the action is running: suppressed. The default is prevented and focus stays on the trigger.",
+  },
+  {
+    keys: ["Tab"],
+    action:
+      "Moves on normally. The trigger stays in the tab order for the entire lifecycle, because it is never disabled.",
+  },
+];
+---
+
+<DocPage
+  title="Getting started"
+  eyebrow="Start"
+  path="getting-started"
+  lede="You have already written this button. This page replaces it with four lines and names the six things the original was getting wrong."
+  description="Replace a hand-rolled useState and try/finally async button with useAction: the synchronous guard, the pending thresholds, abort on unmount, the classified failure and the announcement."
+  meta={[
+    { label: "Primitive", value: "useAction" },
+    { label: "React layer", value: "2.07 kB brotli" },
+    { label: "Peer", value: "react ^18 || ^19" },
+  ]}
+>
+  <Section id="today" title="The code you have today">
+    <p>
+      This is the save button, in some form, in every React application that writes to a server. It is not
+      careless code. The guard is there, the error is caught, the flag is cleared in a
+      <code>finally</code>. It has been reviewed and approved.
+    </p>
+    <Snippet code={handRolled} name="src/customers/SaveCustomerButton.tsx" />
+  </Section>
+
+  <Section id="wrong" title="What is wrong with it">
+    <p>Six defects. Each one is reproducible, and none of them is a style preference.</p>
+
+    <h3>1. The guard is not synchronous</h3>
+    <p>
+      <code>if (saving) return</code> reads the value captured when the handler was created.
+      <code>setSaving(true)</code> does not change that value; it schedules a render. Any suspension between the
+      check and that render — an awaited validation pass, a confirmation step, serialising the payload — leaves
+      a window in which a second activation reads <code>saving === false</code> and passes the same check. With
+      a form library that validates asynchronously, both clicks clear validation before either one mutates.
+    </p>
+    <p>
+      The deeper problem is that the guard is scoped to a component. A second button elsewhere in the tree
+      writing the same customer passes this check unconditionally, because it has its own
+      <code>saving</code>. Two overlapping writes to one record land in nondeterministic order, so the value
+      the user ends up with depends on network timing. A boolean on one hook cannot express resource identity.
+    </p>
+
+    <h3>2. <code>disabled</code> throws focus to the document body</h3>
+    <p>
+      A disabled element is removed from the tab order. Disabling the button at the instant it is pressed
+      blurs it, focus falls to <code>body</code>, and the next Tab starts from the top of the document. A
+      keyboard user who pressed Enter on this button has lost their place in the page, and a screen-reader
+      user has lost the element that was about to describe its own state. This is the single most common
+      accessibility defect in async UI, and it is introduced by the fix for defect 1.
+    </p>
+
+    <h3>3. The spinner flashes, and a delay alone makes it flicker</h3>
+    <p>
+      There is no threshold here at all: the label changes the instant work starts. A 60&thinsp;ms save shows
+      "Saving…" for 60&thinsp;ms, which reads as a glitch rather than as feedback. The obvious fix is to wait
+      before showing anything — and that converts the flash into a flicker, because a response that lands just
+      after the delay shows the affordance for a few milliseconds and removes it again. Two thresholds are
+      needed, not one, and they need two distinct states to hold them.
+    </p>
+
+    <h3>4. The request is not aborted</h3>
+    <p>
+      <code>api.saveCustomer</code> receives no signal, so nothing can stop it. If the row unmounts mid-flight —
+      a route change, a filter that re-renders the list, an optimistic update that replaces the subtree — the request
+      still completes, and a stale response can still win against a newer one. The
+      <code>setSaving(false)</code> in the <code>finally</code> runs against a component that is gone.
+    </p>
+
+    <h3>5. The failure is a string</h3>
+    <p>
+      <code>err.message</code> is a developer artefact, and here it is the entire error model. The interface cannot
+      tell a 401 from a 422 from a 503, so every failure gets identical treatment. That means a retry button on
+      a 403 where the same request will fail the same way, a toast for a validation error that belongs on the field
+      it refers to, no countdown on a 429 that carries <code>Retry-After</code>, and no way to distinguish
+      "you are offline" from "the server broke". Those are four different interfaces, and choosing between
+      them is the work.
+    </p>
+
+    <h3>6. Nothing is announced</h3>
+    <p>
+      A sighted user sees the label change and then sees it change back. A screen-reader user gets nothing: a
+      text change inside a button that is not in a live region is not announced, and by then focus has already
+      been thrown to the document body by defect 2. They pressed a button, waited, and received no feedback
+      that anything was happening or that it finished.
+    </p>
+  </Section>
+
+  <Section id="replacement" title="The replacement">
+    <p>
+      Same component, same markup, same design system. All six defects are gone, and nothing in the file is
+      about timing, flags or cleanup.
+    </p>
+    <Snippet code={replacement} name="src/customers/SaveCustomerButton.tsx" />
+    <p>
+      Three things in that call are worth pausing on. The <code>signal</code> is the second argument to your work
+      function and passing it on is what makes abort real. The <code>key</code> is resource identity, and it is
+      what serialises this write against every other write to the same customer anywhere in the application. And
+      <code>run</code> is replaced on every host render, so reading fresh props and state inside it is safe — the
+      stale-closure hazard that hand-rolled versions almost always carry is not present.
+    </p>
+    <Mistake
+      title="Do not add disabled back"
+      why="triggerProps already reports aria-disabled and already refuses the second activation, while keeping the element focusable. Adding disabled re-introduces defect 2 and costs you the state announcement as well. The disabled property on TriggerPropOverrides is typed never, so getTriggerProps rejects one outright; written straight onto your own button, as below, it still type-checks. Rule UX1005 describes exactly this defect, but its detection is statically decidable and belongs to @unruffled/eslint-plugin, which has not shipped, so nothing reports it at runtime in 0.1.0."
+      bad={disabledBad}
+      good={disabledGood}
+    />
+  </Section>
+
+  <Section id="demo" title="See it run">
+    <Demo
+      title="useAction, 900 ms request"
+      hint="Press it twice, fast"
+      note="The second press is swallowed inside the event handler, before any await. Nothing is queued and nothing fires twice. Lower the latency below 150 ms in the playground and the affordance never appears at all."
+    >
+      <AsyncButtonDemo client:visible latencyMs={900} label="Save customer" />
+    </Demo>
+    <Keys rows={keyRows} />
+  </Section>
+
+  <Section id="free" title="What you got for free">
+    <ul>
+      <li>
+        <strong>A synchronous duplicate guard.</strong> Taken inside the event handler, before any await, before
+        any validation.
+      </li>
+      <li>
+        <strong>A guard keyed by resource.</strong> Actions sharing a <code>key</code> are serialised across the
+        whole application, not within one component.
+      </li>
+      <li>
+        <strong>No flash below 150&thinsp;ms.</strong> Work starts, but the affordance does not appear.
+      </li>
+      <li>
+        <strong>No flicker above it.</strong> Once shown, the affordance stays for at least 400&thinsp;ms; a result
+        that arrives earlier is held in the <code>settling</code> state.
+      </li>
+      <li>
+        <strong>Abort on unmount, cancel and supersede.</strong> One mechanism, because the request lifetime is
+        exactly the lifetime of the <code>busy</code> state.
+      </li>
+      <li>
+        <strong>Focus preserved.</strong> The trigger is never disabled, so it is never blurred. If the surrounding
+        UI replaces the subtree mid-flight and focus lands on the body anyway, it is restored to the trigger when
+        the action settles.
+      </li>
+      <li>
+        <strong>A classified failure.</strong> Ten kinds derived from the status, the body and the network state,
+        parsed from RFC 9457 problem documents, JSON:API pointers, Rails and DRF field maps, flat path/message lists
+        and bare message objects.
+      </li>
+      <li>
+        <strong>An honest retry affordance.</strong>
+        <code>canRetry</code> is false where retrying cannot work, so the button does not exist rather than existing
+        and lying.
+      </li>
+      <li>
+        <strong>An announced outcome.</strong> Success politely, failure assertively, de-duplicated and rate limited,
+        with no call-site opt-in.
+      </li>
+      <li>
+        <strong>Four diagnostics in development.</strong> UX1001 to UX1004 are the ones the shipped action machine
+        reports: UX1002 when two unkeyed triggers overlap, UX1003 when a 400&thinsp;ms wait reached nobody, UX1001
+        on an unguarded destructive action and UX1004 on an unhandled rejection. The other five codes in the table
+        name primitives that are not in 0.1.0 and cannot fire yet. All of it compiles out of the production build
+        entirely.
+      </li>
+    </ul>
+    <Callout tone="note" title="Everything above is a default, and every default is overridable">
+      <p>
+        <code>pending</code> takes a delay and a minimum, <code>guard</code> switches to
+        <code>allow-concurrent</code> for genuinely additive work such as adding separate items to a cart,
+        <code>focus</code> takes <code>none</code> for actions not triggered by a pointer or key,
+        <code>resetAfterMs</code> returns a settled action to idle, and <code>announce</code> takes
+        <code>false</code>. See <a href={href("components/use-action")}>useAction</a> for the full set.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="result" title="Reading the result">
+    <p>
+      <code>useAction</code> returns one object. The first fourteen fields come from the framework-neutral core,
+      so they read the same in a Vue or vanilla binding; the last three are the React layer.
+    </p>
+    <PropsTable rows={apiRows} nameHeading="Field" />
+    <p>
+      Nothing here is stored twice. Every field is derived from the machine snapshot on read, which is why
+      there is exactly one source of truth and nothing to invalidate.
+    </p>
+  </Section>
+
+  <Section id="failure" title="Handling the failure">
+    <p>
+      <code>save.failure</code> is already classified. <code>useFailure</code> adds the two things a view needs
+      on top of that classification: whether the retry could work <em>yet</em>, and how long until it could.
+    </p>
+    <Snippet code={failureHandling} name="src/customers/SaveFailure.tsx" />
+    <p>
+      <code>canRetryNow</code> is <code>canRetry</code> plus the clock. A 429 can honestly be retried, but not for
+      another eleven seconds, and caches that honour <code>Retry-After</code> internally while leaving the button
+      enabled invite the user to hammer a rate-limited endpoint. <code>retryInMs</code> counts down from the moment
+      the failure arrived, not from whenever the component happened to render.
+    </p>
+    <p>
+      <code>summaryProps</code> sets <code>role="alert"</code>, so an inline banner is announced on appearance
+      without a live region of its own, and <code>data-kind</code> so you can style the ten kinds without branching
+      in JavaScript. Do not pair it with a toast saying the same thing: the action outcome is already announced.
+    </p>
+    <p>
+      Pass <code>null</code> when there is no failure. The hook returns <code>null</code> and holds no subscriptions.
+      Full taxonomy, status mapping and parser coverage on
+      <a href={href("components/use-failure")}>useFailure</a>.
+    </p>
+  </Section>
+
+  <Section id="next" title="Where to go next">
+    <ul>
+      <li>
+        <a href={href("components/use-action")}>useAction</a> — every option, all six states, the guard modes and
+        the retry policy.
+      </li>
+      <li>
+        <a href={href("components/use-failure")}>useFailure</a> — the ten kinds, the status table, and the five
+        error body shapes that are parsed.
+      </li>
+      <li>
+        <a href={href("components/announcer")}>Announcer</a> — why there are two live regions, and the queueing,
+        de-duplication and rate limiting in front of them.
+      </li>
+      <li>
+        <a href={href("playground")}>Playground</a> — drive all six states by hand with the latency and the thresholds
+        under your control.
+      </li>
+      <li>
+        <a href={href("accessibility")}>Accessibility</a> — the focus and announcement contract, stated as obligations
+        rather than features.
+      </li>
+      <li>
+        <a href={href("patterns")}>Patterns</a> — the shapes this composes into: list rows, forms, dialogs.
+      </li>
+      <li>
+        <a href={href("api")}>API reference</a> — the full exported surface of both packages.
+      </li>
+      <li>
+        <a href={href("roadmap")}>Roadmap</a> — what 0.1.0 deliberately does not ship yet, and why.
+      </li>
+    </ul>
+  </Section>
+</DocPage>

@@ -1,0 +1,337 @@
+---
+/**
+ * Status, honestly.
+ *
+ * The shipped list is the three `src/index.ts` files. The unshipped list is taken from the
+ * names the rule table in `packages/core/src/diagnostics.ts` already refers to, plus the
+ * packages the same file names as future consumers of the bus. Nothing here is a date,
+ * because a date would be the one thing on this page that was not checked against the source.
+ */
+import DocPage from "../components/docs/DocPage.astro";
+import Section from "../components/docs/Section.astro";
+import Callout from "../components/docs/Callout.astro";
+import { href } from "../lib/site";
+---
+
+<DocPage
+  title="Roadmap"
+  eyebrow="Reference"
+  path="roadmap"
+  lede="What 0.1.0 actually contains, what is being built next, and the long list of things this library will never build because someone else already built them well."
+  description="unruffled roadmap: the 0.1.0 surface, useConfirm and useUndoable next, the collections group after that, the planned integration packages, what is permanently out of scope, and what semver means for the UX diagnostic codes."
+  meta={[
+    { label: "Current", value: "0.1.0" },
+    { label: "Shipped primitives", value: "6" },
+    { label: "Tests", value: "50" },
+  ]}
+>
+  <Section id="shipped" title="Shipped in 0.1.0">
+    <p>
+      One machine, its React binding, and the infrastructure the rest of the library will be built on.
+      Everything in this list is documented in the <a href={href("api")}>API reference</a> with every option and
+      return value; if a name is not there, it does not exist yet.
+    </p>
+
+    <h3>Primitives</h3>
+    <ul>
+      <li>
+        <strong>useAction</strong> — the action lifecycle as one hook: a synchronous duplicate guard keyed by resource,
+        two pending thresholds so a fast action never flashes and a shown affordance never flickers, abort on unmount,
+        a classified failure, optional automatic retry with an observable backoff state, focus restoration, and
+        an announcement.
+      </li>
+      <li>
+        <strong>useFailure</strong> — ten failure kinds from the payload shapes real APIs return, a
+        <code>canRetry</code> that is honest about a 403, field errors normalised onto dotted paths, and a live
+        <code>Retry-After</code> countdown.
+      </li>
+      <li>
+        <strong>Announcer</strong> and <strong>useAnnounce</strong> — two live regions, polite and assertive, registered
+        in a layout effect. 692 B, and the largest single accessibility effect in the library.
+      </li>
+      <li>
+        <strong>UnruffledProvider</strong> — optional application-wide behavioural defaults: one pending policy,
+        one classifier, one message catalogue, one root.
+      </li>
+      <li>
+        <strong>usePrefersReducedMotion</strong> — the preference, subscribed rather than read once at mount, and
+        respected by default rather than behind an opt-in.
+      </li>
+    </ul>
+
+    <h3>Infrastructure</h3>
+    <ul>
+      <li>
+        <strong>The machine runtime</strong> — <code>createMachine</code>,
+        <code>createService</code>, <code>matches</code>, <code>hasTag</code>. 1.49 kB brotli, and what a Vue
+        or Svelte adapter would be built on.
+      </li>
+      <li>
+        <strong>The eight ports</strong> — clock, scheduler, storage, navigation, doc, announcer, transport, logger.
+        454 B. Core never touches a global, which is why a shadow root and a popped-out window work without special-casing.
+      </li>
+      <li>
+        <strong>useMachine, useResolvedPorts, useCountdown, createDomPorts</strong> — exported so a primitive the
+        library has not shipped can be built on the same runtime with the same testability.
+      </li>
+      <li>
+        <strong>@unruffled/testing</strong> — a fake clock, a recording announcer, scripted navigation, a fake document,
+        memory storage and <code>flushMicrotasks</code>, so a timing assertion is a counter increment and the
+        suite never sleeps.
+      </li>
+      <li>
+        <strong>@unruffled/core/diagnostics</strong> — the nine rules, the bus and the formatter, on a separate
+        subpath so a production bundle carries none of it.
+      </li>
+    </ul>
+
+    <p>
+      7.08 kB brotli for <code>@unruffled/react</code> and <code>@unruffled/core</code> together with everything
+      retained. 50 tests. No third-party runtime dependency in either package.
+    </p>
+
+    <Callout tone="warning" title="Five of the nine diagnostics name a fix you cannot apply yet">
+      <p>
+        The action machine is the only machine shipped, so only
+        <a href={href("diagnostics/ux1001")}>UX1001</a> to
+        <a href={href("diagnostics/ux1004")}>UX1004</a> can currently fire. Of those, UX1001 names
+        <code>useConfirm</code> and <code>useUndoable</code> as its fix and neither exists, so the only way to satisfy
+        it in 0.1.0 is to leave <code>destructive</code> unset. UX1005 to UX1009 are unreachable until the primitives
+        they name have shipped.
+      </p>
+      <p>
+        The codes are published now rather than later on purpose. A code is permanent public API, and
+        reserving the whole table up front is what stops a later release from reassigning one.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="next" title="Next">
+    <p>
+      Two primitives, in this order, because together they are the recovery path that UX1001 demands and the
+      reason <code>destructive</code> and <code>reversible</code> are already in
+      <code>ActionProps</code>.
+    </p>
+    <ul>
+      <li>
+        <strong>useConfirm</strong> — holds an action behind a confirmation step, manages the focus move into and
+        back out of the prompt, and sets <code>reversible</code> on the action it wraps. It will drive your dialog
+        rather than render one; UX1009 already describes the host component it needs and where it has to be mounted.
+      </li>
+      <li>
+        <strong>useUndoable</strong> — applies the change immediately and defers the write for a stated window,
+        announces that the window is open, rolls back on undo, and flushes the pending write through the navigation
+        port if the user navigates or closes the tab first. UX1007 already describes what happens when that port
+        is missing.
+      </li>
+    </ul>
+  </Section>
+
+  <Section id="after" title="After that">
+    <p>
+      The collections group first, because a list is where every one of these problems appears at once and
+      where a per-component boolean stops being able to describe the truth.
+    </p>
+    <ul>
+      <li>
+        <strong>usePartial</strong> — a write across many items where some succeed and some fail, reported per item
+        rather than collapsed into one boolean. The case that is normally shipped as a toast saying “some items
+        could not be updated”.
+      </li>
+      <li>
+        <strong>useRowState</strong> — the per-row lifecycle of a list: which rows are saving, which failed, which
+        were optimistically removed, without one hook per concern per row.
+      </li>
+      <li>
+        <strong>useSelection</strong> — a selection that survives filtering, paging and a refetch, and knows the
+        difference between “all on this page” and “all matching the filter”.
+      </li>
+      <li>
+        <strong>useBulkAction</strong> — a keyed action over a selection, with partial failure from
+        <code>usePartial</code> and announced progress rather than a silent spinner over a table.
+      </li>
+    </ul>
+    <p>Then:</p>
+    <ul>
+      <li>
+        <strong>useDataState</strong> — the states of a data region, including the one that is always missed: filters
+        that match nothing is not the same screen as a table that has never had a record, and offering “create your
+        first record” to someone whose filter is too narrow is how duplicates get created. This is the rule behind
+        UX1006.
+      </li>
+    </ul>
+    <p>Then the three that sit at the edges of a form:</p>
+    <ul>
+      <li>
+        <strong>useServerErrors</strong> — maps the <code>fields</code> array of a normalised failure onto a form
+        library's field state, so a 422 lands on the inputs instead of in a banner.
+      </li>
+      <li>
+        <strong>useDirtyGuard</strong> — unsaved changes across all three exits: route change, tab close, and dialog
+        dismissal. The third is the one that is normally missed, and the one where the data loss actually happens.
+        This is UX1008.
+      </li>
+      <li>
+        <strong>useGate</strong> — a control that is unavailable for a stated reason, kept focusable, marked <code
+          >aria-disabled</code
+        >, with the reason exposed through
+        <code>aria-describedby</code>. This is UX1005, and it generalises the position
+        <code>useAction</code> already takes about <code>disabled</code>.
+      </li>
+    </ul>
+  </Section>
+
+  <Section id="integrations" title="Integrations">
+    <p>
+      Separate packages, so that none of them is in the dependency graph of someone who does not use them.
+      Each one is a binding, not a fork of the thing it binds to.
+    </p>
+    <ul>
+      <li>
+        <strong>@unruffled/query</strong> — hand a TanStack Query mutation to
+        <code>useAction</code> and keep one source of truth for pending and error, rather than deriving the same
+        lifecycle twice and watching the two drift.
+      </li>
+      <li>
+        <strong>@unruffled/form</strong> — the binding for <code>useServerErrors</code> and
+        <code>useDirtyGuard</code> against the form libraries people actually use.
+      </li>
+      <li>
+        <strong>@unruffled/intl</strong> — translated catalogues for the ten failure kinds, so the taxonomy can
+        be localised without re-implementing it. The <code>messages</code> option on the provider is already the
+        seam this plugs into.
+      </li>
+      <li>
+        <strong>@unruffled/eslint-plugin</strong> — the statically decidable subset of the rule table, which is
+        exactly four rules: UX1001, UX1005, UX1006 and UX1008 are marked
+        <code>static: true</code> because their condition is decidable from source alone. The other five need runtime
+        evidence and stay on the bus.
+      </li>
+      <li>
+        <strong>@unruffled/devtools</strong> — subscribes to the diagnostics bus and formats what it reports. The
+        formatter already lives in core so that the panel, the lint rule and the test matcher produce identical
+        wording.
+      </li>
+    </ul>
+  </Section>
+
+  <Section id="out-of-scope" title="Explicitly out of scope, forever">
+    <p>
+      Not “later”. Never. Each of these is already solved by something better than this library would build,
+      and the whole premise here is composing over the component library you already own rather than competing
+      with it. The library emits no visual and ships no CSS, which is what makes that claim checkable rather
+      than a slogan.
+    </p>
+    <ul>
+      <li>
+        <strong>Buttons and cards</strong> — your design system has them, and they are the one part of a product
+        that should look like yours. A headless library that ships a button has already broken its own position.
+      </li>
+      <li>
+        <strong>Dialogs</strong> — the platform has <code>&lt;dialog&gt;</code>, and Radix, Ark and React Aria
+        have solved focus trapping, scroll locking and the inert background properly.
+        <code>useConfirm</code> will drive the dialog you already have.
+      </li>
+      <li>
+        <strong>Toasts</strong> — Sonner and react-hot-toast exist, and this library's actual position is that most
+        outcomes do not belong in a toast at all. A failure belongs next to the thing that failed, announced once.
+      </li>
+      <li>
+        <strong>Command palettes</strong> — cmdk. A fuzzy-matching, keyboard-driven overlay is a finished problem.
+      </li>
+      <li>
+        <strong>Date pickers</strong> — the hardest widget in the ecosystem and one of the best solved. React Aria
+        handles calendars, locales, time zones and ranges with an accessibility budget this library is not going
+        to match.
+      </li>
+      <li>
+        <strong>Data grids</strong> — TanStack Table and AG Grid own virtualisation, column sizing, grouping and
+        pinning. The collections group will give a grid its async half: selection that survives a refetch, per-row
+        state, partial failure. Not its layout.
+      </li>
+      <li>
+        <strong>Icon packs</strong> — Lucide and Phosphor. Shipping icons would add bytes to every consumer for
+        a decision that is purely visual.
+      </li>
+      <li>
+        <strong>Theme kits</strong> — the one thing that would make this library stop composing. It ships no stylesheet,
+        and the only inline style in it is the clip that keeps a live region in the accessibility tree and out of
+        the layout.
+      </li>
+      <li>
+        <strong>Tour and onboarding libraries</strong> — Shepherd and driver.js. Positioning a highlight over a
+        target element is a different problem from the one this library is about.
+      </li>
+      <li>
+        <strong>Animation runtimes</strong> — Motion. What this library owes you is the timing values and the user's
+        reduced-motion preference, both of which it hands you as plain numbers and a boolean. One shared frame loop
+        drives every countdown in it, which is why there is no animation dependency at all.
+      </li>
+    </ul>
+    <p>
+      The pattern in that list is the same each time: where a well-maintained solution exists, this library's
+      job is to be composable with it. See <a href={href("animation")}>Animation</a> and
+      <a href={href("accessibility")}>Accessibility</a> for how that works in practice.
+    </p>
+  </Section>
+
+  <Section id="versioning" title="Versioning">
+    <p>
+      Semver, and <strong>0.x means the API can still move</strong>. A minor release may change an option
+      name, a default or a return shape. Each one that does will say so in the changelog with the reason and
+      the migration, and there will not be many, but pinning a minor is reasonable until 1.0.
+    </p>
+
+    <h3>What will not move, even in 0.x</h3>
+    <ul>
+      <li>
+        <strong>No <code>disabled</code> on a trigger.</strong> The element stays focusable and reports <code
+          >aria-disabled</code
+        >. This is a position, not an implementation detail.
+      </li>
+      <li>
+        <strong>Announcement is on by default</strong> and silence is the explicit opt-out.
+      </li>
+      <li><strong>No CSS, no visual output</strong>, and no third-party runtime dependency.</li>
+      <li>
+        <strong>Ports stay the only impurity.</strong> Core will not start reaching for a global.
+      </li>
+    </ul>
+
+    <h3>What stability means for the diagnostic codes</h3>
+    <p>
+      The <code>UX1001</code> to <code>UX1009</code> codes are treated as permanent public API, separately from
+      the version number, because they end up in places a refactor cannot reach: consumer lint configs, suppression
+      comments in source, and bug reports.
+    </p>
+    <ul>
+      <li>
+        <strong>A code is never reassigned.</strong> It will not come to mean a different problem in a later release,
+        and it will not be recycled after a rule is removed.
+      </li>
+      <li>
+        <strong>Wording and detection can change.</strong> A rule may be reworded, or its detection improved so
+        it fires in cases it used to miss, under the same code.
+      </li>
+      <li>
+        <strong>Severity can change.</strong> Two rules are warnings today rather than errors; that can be revised
+        with evidence.
+      </li>
+      <li>
+        <strong>New rules take new codes.</strong> The nine are reserved now so that the table cannot be renumbered
+        later.
+      </li>
+    </ul>
+
+    <h3>What 1.0 waits on</h3>
+    <p>
+      The collections group shipped and in use, and a real screen-reader audit. The accessibility claims on
+      this site are made from specification and from the published behaviour of each technique; they have <strong
+        >not</strong
+      > yet been verified by a pass through NVDA, JAWS and VoiceOver. Until that has happened, calling this 1.0
+      would be claiming something that has not been checked. The <a href={href("accessibility")}
+        >accessibility page</a
+      > says the same thing in its own header.
+    </p>
+  </Section>
+</DocPage>

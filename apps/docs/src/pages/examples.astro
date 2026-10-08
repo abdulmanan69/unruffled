@@ -1,0 +1,646 @@
+---
+/**
+ * Four complete examples.
+ *
+ * Every snippet compiles against the shipped 0.1.0 surface and nothing else. The field-error
+ * shapes come from `packages/core/src/shared/normalizeError.ts`, the duplicate-submit
+ * behaviour from the `busy` state in `packages/core/src/machines/action/machine.ts`, and the
+ * `Retry-After` countdown from `packages/react/src/failure.ts`.
+ */
+import DocPage from "../components/docs/DocPage.astro";
+import Section from "../components/docs/Section.astro";
+import Snippet from "../components/docs/Snippet.astro";
+import Demo from "../components/docs/Demo.astro";
+import Callout from "../components/docs/Callout.astro";
+import Mistake from "../components/docs/Mistake.astro";
+import { href } from "../lib/site";
+import { FailureKindsDemo, GuardDemo, RetryDemo, AsyncButtonDemo } from "../components/demos/index.tsx";
+
+const transportCode = `// api/http.ts
+//
+// \`normalizeError\` reads \`status\`, \`headers\` and a body off whatever the
+// promise rejected with. It looks for the body at \`body\`, \`data\`,
+// \`response.data\`, \`response.body\`, and finally on the error itself, so an
+// Axios error and a hand-rolled fetch error both normalise without adapters.
+
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, init);
+
+  if (!response.ok) {
+    throw Object.assign(new Error(response.statusText), {
+      status: response.status,
+      headers: response.headers,
+      body: await response.json().catch(() => undefined),
+    });
+  }
+
+  return response.json() as Promise<T>;
+}`;
+
+const formPayloadCode = `HTTP/1.1 422 Unprocessable Content
+Content-Type: application/problem+json
+
+{
+  "type": "https://example.com/probs/validation",
+  "title": "Validation failed",
+  "status": 422,
+  "errors": [
+    {
+      "source": { "pointer": "/data/attributes/email" },
+      "detail": "That address is already registered."
+    }
+  ]
+}`;
+
+const formNormalisedCode = `{
+  kind: "validation",
+  message: "Some details need fixing.",
+  detail: "Validation failed",
+  status: 422,
+  canRetry: false,
+  fields: [{ path: "email", message: "That address is already registered." }],
+  raw: Error
+}`;
+
+const formCode = `// CustomerForm.tsx
+import { useState } from "react";
+import { useAction, useFailure } from "@unruffled/react";
+import { request } from "./api/http";
+
+interface Draft {
+  readonly name: string;
+  readonly email: string;
+}
+
+export function CustomerForm({ customerId }: { customerId: string }) {
+  const [draft, setDraft] = useState<Draft>({ name: "", email: "" });
+
+  const save = useAction(
+    (_args, signal) =>
+      request<{ id: string }>(\`/api/customers/\${customerId}\`, {
+        method: "PUT",
+        body: JSON.stringify(draft),
+        signal,
+      }),
+    {
+      key: \`customer:\${customerId}\`,
+      announce: { success: "Customer saved" },
+      onError: (failure) => {
+        // Field errors belong on the fields. Everything else is worth logging.
+        if (failure.kind !== "validation") report(failure.raw);
+      },
+    },
+  );
+
+  const failure = useFailure(save.failure);
+  const messageFor = (path: string) =>
+    failure?.fields?.find((field) => field.path === path)?.message;
+
+  return (
+    <form
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        // A second submit while the first is in flight does nothing. The only
+        // TRIGGER transition out of \`busy\` is the unkeyed-overlap report, so
+        // a keyed action has nothing to take and the event is dropped.
+        save.trigger();
+      }}
+    >
+      <label htmlFor="name">Name</label>
+      <input
+        id="name"
+        value={draft.name}
+        aria-invalid={messageFor("name") !== undefined}
+        aria-describedby={messageFor("name") ? "name-error" : undefined}
+        onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+      />
+      {messageFor("name") ? <p id="name-error">{messageFor("name")}</p> : null}
+
+      <label htmlFor="email">Email</label>
+      <input
+        id="email"
+        type="email"
+        value={draft.email}
+        aria-invalid={messageFor("email") !== undefined}
+        aria-describedby={messageFor("email") ? "email-error" : undefined}
+        onChange={(event) => setDraft({ ...draft, email: event.target.value })}
+      />
+      {messageFor("email") ? <p id="email-error">{messageFor("email")}</p> : null}
+
+      {/* A validation failure is already on the fields. Repeating it in a
+          banner tells the user something is wrong twice and where once. */}
+      {failure && failure.kind !== "validation" ? (
+        <p {...failure.summaryProps}>{failure.message}</p>
+      ) : null}
+
+      {/* \`save.attrs\` rather than \`save.triggerProps\`: triggerProps sets
+          type="button", which would stop Enter in a text field from
+          submitting. The attributes are the same either way. */}
+      <button type="submit" {...save.attrs}>
+        {save.pending ? "Saving" : "Save customer"}
+      </button>
+    </form>
+  );
+}`;
+
+const rowCode = `// InvoiceTable.tsx
+import { useState } from "react";
+import { useAction } from "@unruffled/react";
+import { request } from "./api/http";
+
+interface Invoice {
+  readonly id: string;
+  readonly reference: string;
+  readonly total: string;
+}
+
+// One hook per row, in a row component. The key is the row's resource
+// identity, so this delete contends with every other write to the same
+// invoice anywhere in the tree, not just with itself.
+function InvoiceRow({
+  invoice,
+  onRemoved,
+}: {
+  invoice: Invoice;
+  onRemoved: (id: string) => void;
+}) {
+  const remove = useAction(
+    (_args, signal) =>
+      request<void>(\`/api/invoices/\${invoice.id}\`, { method: "DELETE", signal }),
+    {
+      key: \`invoice:\${invoice.id}\`,
+      announce: { success: \`Invoice \${invoice.reference} deleted\` },
+      onSuccess: () => onRemoved(invoice.id),
+      onError: (failure) => report(failure.raw),
+    },
+  );
+
+  return (
+    <tr data-state={remove.state}>
+      <th scope="row">{invoice.reference}</th>
+      <td>{invoice.total}</td>
+      <td>
+        {/* The refused second click also stops propagating, so the row's own
+            click handler does not read it as a selection. */}
+        <button {...remove.triggerProps}>
+          {remove.pending ? "Deleting" : "Delete"}
+        </button>
+
+        {remove.status === "error" ? (
+          <span role="alert" data-kind={remove.failure?.kind}>
+            {remove.failure?.message}
+            {remove.canRetry ? (
+              <button type="button" onClick={remove.retry}>
+                Try again
+              </button>
+            ) : null}
+          </span>
+        ) : null}
+      </td>
+    </tr>
+  );
+}
+
+export function InvoiceTable({ invoices }: { invoices: readonly Invoice[] }) {
+  const [removed, setRemoved] = useState<readonly string[]>([]);
+  const rows = invoices.filter((invoice) => !removed.includes(invoice.id));
+
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Reference</th>
+          <th scope="col">Total</th>
+          <th scope="col">
+            <span className="sr-only">Actions</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((invoice) => (
+          <InvoiceRow
+            key={invoice.id}
+            invoice={invoice}
+            onRemoved={(id) => setRemoved((ids) => [...ids, id])}
+          />
+        ))}
+      </tbody>
+    </table>
+  );
+}`;
+
+const rowBadCode = `export function InvoiceTable({ invoices }: Props) {
+  return invoices.map((invoice) => {
+    // The hook count now changes with the data. React throws on the
+    // next render, and there is nowhere to put a per-row key.
+    const remove = useAction(() => deleteInvoice(invoice.id));
+    return <button {...remove.triggerProps}>Delete</button>;
+  });
+}`;
+
+const rowGoodCode = `function InvoiceRow({ invoice }: { invoice: Invoice }) {
+  const remove = useAction(() => deleteInvoice(invoice.id), {
+    key: \`invoice:\${invoice.id}\`,
+  });
+  return <button {...remove.triggerProps}>Delete</button>;
+}
+
+export function InvoiceTable({ invoices }: Props) {
+  return invoices.map((invoice) => (
+    <InvoiceRow key={invoice.id} invoice={invoice} />
+  ));
+}`;
+
+const ratePayloadCode = `HTTP/1.1 429 Too Many Requests
+Retry-After: 30`;
+
+const rateCode = `// RefreshReport.tsx
+import { useAction, useFailure } from "@unruffled/react";
+import { request } from "./api/http";
+
+export function RefreshReport({ onRows }: { onRows: (rows: readonly Row[]) => void }) {
+  const refresh = useAction(
+    (_args, signal) => request<readonly Row[]>("/api/report", { signal }),
+    {
+      key: "report:rows",
+      announce: { success: "Report refreshed" },
+      onSuccess: onRows,
+      onError: (failure) => report(failure.raw),
+      // No \`retry\` policy on purpose. Automatic backoff is computed from
+      // \`computeBackoff\`, which does not read Retry-After, so on a 429 the
+      // server's own number is the only correct wait. Show it instead.
+    },
+  );
+
+  const failure = useFailure(refresh.failure);
+  const held = failure?.kind === "rateLimited" && !failure.canRetryNow;
+  const seconds =
+    failure?.retryInMs == null ? null : Math.ceil(failure.retryInMs / 1000);
+
+  return (
+    <div>
+      {/* The library suppresses its own pending state. The rate-limit window
+          is the application's gate, so it is composed on top -- and it
+          follows the same rule the library does: aria-disabled, never
+          disabled, so the button keeps focus and keeps its description. */}
+      <button
+        {...refresh.triggerProps}
+        aria-disabled={refresh.triggerProps["aria-disabled"] ?? (held || undefined)}
+        aria-describedby={held ? "refresh-wait" : undefined}
+        onClick={(event) => {
+          if (held) {
+            event.preventDefault();
+            return;
+          }
+          refresh.triggerProps.onClick(event);
+        }}
+      >
+        {refresh.pending ? "Refreshing" : "Refresh"}
+      </button>
+
+      {/* Announced once, on appearance, by role="alert". */}
+      {failure ? <p {...failure.summaryProps}>{failure.message}</p> : null}
+
+      {/* Not a live region, so the ticking number is never read aloud ten
+          times a second. It is read on focus, through aria-describedby. */}
+      {held && seconds !== null ? (
+        <p id="refresh-wait">Try again in {seconds}s.</p>
+      ) : null}
+    </div>
+  );
+}`;
+
+const providerCode = `// app/providers.tsx
+import type { ReactNode } from "react";
+import { Announcer, UnruffledProvider } from "@unruffled/react";
+
+export function Providers({ children }: { children: ReactNode }) {
+  return (
+    <UnruffledProvider
+      defaults={{
+        // A dense settings screen: reveal the affordance sooner, hold it for
+        // the same 400 ms once it is up. \`pending\` is a partial, so \`min\`
+        // keeps its default.
+        pending: { delay: 100 },
+        messages: {
+          auth: "Your session has expired. Sign in again to continue.",
+          conflict: "A colleague changed this record. Reload to see their version.",
+        },
+      }}
+    >
+      {children}
+      {/* Once, near the root. Announcement is already on everywhere. */}
+      <Announcer />
+    </UnruffledProvider>
+  );
+}`;
+
+const settingsCode = `// NotificationSettings.tsx
+import { useState } from "react";
+import { useAction, useFailure } from "@unruffled/react";
+import { request } from "./api/http";
+
+interface Settings {
+  readonly digest: "daily" | "weekly" | "off";
+  readonly mentions: boolean;
+}
+
+export function NotificationSettings({ saved }: { saved: Settings }) {
+  const [draft, setDraft] = useState(saved);
+  const dirty = draft.digest !== saved.digest || draft.mentions !== saved.mentions;
+
+  const save = useAction(
+    (_args, signal) =>
+      request<Settings>("/api/settings/notifications", {
+        method: "PUT",
+        body: JSON.stringify(draft),
+        signal,
+      }),
+    {
+      key: "settings:notifications",
+      // \`pending\` is announced when the affordance becomes visible, which is
+      // after the 100 ms delay set above -- never for a save that was fast.
+      announce: { pending: "Saving settings", success: "Settings saved" },
+      // The one place a reset timer earns its keep: a confirmation that
+      // clears itself. The default is to keep the result indefinitely.
+      resetAfterMs: 4000,
+      onError: (failure) => report(failure.raw),
+    },
+  );
+
+  const failure = useFailure(save.failure);
+
+  return (
+    <section aria-labelledby="notifications-heading">
+      <h2 id="notifications-heading">Notifications</h2>
+
+      <fieldset>
+        <legend>Digest</legend>
+        {(["daily", "weekly", "off"] as const).map((value) => (
+          <label key={value}>
+            <input
+              type="radio"
+              name="digest"
+              value={value}
+              checked={draft.digest === value}
+              onChange={() => setDraft({ ...draft, digest: value })}
+            />
+            {value}
+          </label>
+        ))}
+      </fieldset>
+
+      <label>
+        <input
+          type="checkbox"
+          checked={draft.mentions}
+          onChange={(event) => setDraft({ ...draft, mentions: event.target.checked })}
+        />
+        Email me when someone mentions me
+      </label>
+
+      <div>
+        <button
+          {...save.triggerProps}
+          aria-disabled={save.triggerProps["aria-disabled"] ?? (!dirty || undefined)}
+          onClick={(event) => {
+            if (!dirty) {
+              event.preventDefault();
+              return;
+            }
+            save.triggerProps.onClick(event);
+          }}
+        >
+          {save.pending ? "Saving" : "Save changes"}
+        </button>
+
+        {/* \`status\` is "success" for four seconds, then returns to idle. The
+            screen reader heard it once, from the Announcer. */}
+        {save.status === "success" ? <p aria-hidden="true">Saved</p> : null}
+
+        {failure ? <p {...failure.summaryProps}>{failure.message}</p> : null}
+      </div>
+    </section>
+  );
+}`;
+---
+
+<DocPage
+  title="Examples"
+  eyebrow="Concern"
+  path="examples"
+  lede="Four complete files you can paste. A form that puts server errors on the fields, a table with one keyed action per row, a refresh button that respects Retry-After, and a settings panel wired through the provider."
+  description="Copy-paste React examples for unruffled 0.1.0: server-side field errors from useFailure, per-row keyed deletes, a Retry-After countdown, and application-wide defaults through UnruffledProvider."
+  meta={[
+    { label: "Surface used", value: "0.1.0 only" },
+    { label: "Import", value: "@unruffled/react" },
+    { label: "Cost", value: "7.08 kB brotli" },
+  ]}
+>
+  <Section id="transport" title="The one piece of plumbing they share">
+    <p>
+      All four examples throw the same shape of error, because <code>normalizeError</code> is what turns it into
+      something an interface can branch on. It reads <code>status</code>,
+      <code>headers</code> and a body off whatever the promise rejected with, and it looks for the body in five
+      places so an Axios error and a hand-rolled fetch error both work without an adapter.
+    </p>
+
+    <Snippet code={transportCode} lang="ts" name="api/http.ts" />
+
+    <p>
+      Nothing in the library calls <code>fetch</code>. The work you hand to <code>useAction</code>
+      receives an <code>AbortSignal</code>, and forwarding it is what makes an unmount, a cancel and a
+      superseded attempt all tear the request down the same way.
+    </p>
+  </Section>
+
+  <Section id="form" title="A form with server-side field errors">
+    <p>
+      A 422 carrying field errors is not a toast. It is a set of messages that belong next to the inputs that
+      caused them, and one of the four interfaces <code>useFailure</code> exists to choose between. Five payload
+      conventions normalise onto the same
+      <code>fields</code> array: RFC 9457 <code>errors</code>, JSON:API
+      <code>source.pointer</code>, the <code>field_errors</code> map, a flat list of
+      <code>path</code> and <code>message</code>, and <code>violations</code>.
+    </p>
+
+    <Snippet code={formPayloadCode} lang="http" name="response" />
+    <p>normalises to:</p>
+    <Snippet code={formNormalisedCode} lang="ts" name="NormalizedFailure" />
+
+    <p>
+      <code>canRetry</code> is <code>false</code> here, and that is the point: a retry button on a validation error
+      is a lie, because the same request fails the same way. The pointer loses its
+      <code>/data/attributes</code> prefix, so the path matches the field name you already use.
+    </p>
+
+    <Snippet code={formCode} name="CustomerForm.tsx" />
+
+    <p>Two decisions in that file are worth naming.</p>
+    <ul>
+      <li>
+        The submit button spreads <code>save.attrs</code>, not
+        <code>save.triggerProps</code>. <code>triggerProps</code> sets
+        <code>type="button"</code>, which would stop Enter in a text field from submitting the form. The
+        attributes are identical; the trigger moves to <code>onSubmit</code>.
+      </li>
+      <li>
+        Nothing guards the second submit by hand. The only <code>TRIGGER</code> transition out of
+        <code>busy</code> is the unkeyed-overlap diagnostic, so a keyed action drops the duplicate synchronously,
+        inside the event handler, before any validation runs.
+      </li>
+    </ul>
+
+    <Demo
+      title="Classification"
+      hint="Pick a status"
+      note="The same mapping this example relies on. 400 is only validation when the body carries field errors; without them it is terminal, because a 400 with no detail is not something a user can act on."
+    >
+      <FailureKindsDemo client:visible />
+    </Demo>
+  </Section>
+
+  <Section id="rows" title="A table row with a keyed delete">
+    <p>
+      Per-row actions are where the resource key stops being theoretical. A boolean on one hook cannot say
+      that the toolbar's approve and the row's approve touch the same invoice. A key can, and actions sharing
+      a key are serialised across the whole application.
+    </p>
+
+    <Snippet code={rowCode} name="InvoiceTable.tsx" />
+
+    <p>
+      The delete trigger keeps the <code>retry</code> affordance behind
+      <code>remove.canRetry</code>, so a 403 gets a message and a 503 gets a button. The error
+      <code>span</code> carries <code>role="alert"</code> for the inline case; the outcome has already been announced
+      once by the <code>Announcer</code>, so do not add a toast saying the same thing a third time.
+    </p>
+
+    <Mistake
+      title="A hook inside the row loop"
+      why="Hooks cannot be called in a loop, and a single hook hoisted above the loop has one key and one pending flag for every row, so deleting one row suppresses every other row's button."
+      bad={rowBadCode}
+      good={rowGoodCode}
+    />
+
+    <Callout tone="warning" title="destructive is not ready for this">
+      <p>
+        A delete is irreversible, so <code>destructive: true</code> is the honest label. In 0.1.0 it reports <a
+          href={href("diagnostics/ux1001")}>UX1001</a
+        > unless something sets
+        <code>reversible</code>, and the two primitives that do that -- <code>useConfirm</code> and
+        <code>useUndoable</code> -- have not shipped. Leave the flag off until they do rather than wiring a rule
+        you cannot satisfy. See the <a href={href("roadmap")}>roadmap</a>.
+      </p>
+    </Callout>
+
+    <Demo
+      title="Two triggers, one key"
+      hint="Press both"
+      note="Two buttons in two subtrees contending on one resource key. The second press is refused synchronously and the button keeps focus, because it was never disabled."
+    >
+      <GuardDemo client:visible />
+    </Demo>
+  </Section>
+
+  <Section id="rate-limit" title="A refresh button that respects Retry-After">
+    <p>
+      A 429 states how long to wait. Honouring it inside a cache while leaving the button enabled invites the
+      user to hammer the endpoint, which is how a rate limit becomes an outage. The remaining time is a return
+      value here, not an internal detail.
+    </p>
+
+    <Snippet code={ratePayloadCode} lang="http" name="response" />
+
+    <p>
+      That normalises to <code>kind: "rateLimited"</code> with
+      <code>retryAfterMs: 30000</code> and <code>canRetry: true</code>.
+      <code>useFailure</code> adds the two values an interface actually needs:
+      <code>retryInMs</code>, counting down live from the moment the failure arrived, and
+      <code>canRetryNow</code>, which is <code>canRetry</code> and the stated delay having elapsed. The header is
+      accepted in both forms the specification allows, delta-seconds and an HTTP date.
+    </p>
+
+    <Snippet code={rateCode} name="RefreshReport.tsx" />
+
+    <p>
+      The countdown deliberately does not live in the alert. <code>role="alert"</code> announces its own subtree
+      whenever the content changes, so a ticking number inside it would be read out every second. The alert holds
+      the static message; the number sits in an ordinary paragraph the button points at with <code
+        >aria-describedby</code
+      >, which a screen reader reads on focus.
+    </p>
+
+    <Callout tone="note" title="Two different retryInMs values">
+      <p>
+        <code>action.retryInMs</code> counts down to an automatic retry the machine has already scheduled, from
+        the <code>backoff</code> state. <code>failure.retryInMs</code> counts down the delay the server stated.
+        They are separate because the first is a policy you chose and the second is a fact you were told, and <code
+          >computeBackoff</code
+        > does not read
+        <code>Retry-After</code>. For a 429, prefer the server's number.
+      </p>
+    </Callout>
+
+    <Demo
+      title="Automatic retry"
+      hint="Watch the backoff state"
+      note="The other case: a 503 with a retry policy. backoff is a real state, so the wait renders as a countdown rather than looking like a hang."
+    >
+      <RetryDemo client:visible />
+    </Demo>
+  </Section>
+
+  <Section id="settings" title="A settings panel, wired through the provider">
+    <p>
+      Timing policy set per call site is how inconsistency gets into a product. The provider is optional --
+      every hook works without it -- but it is the right place for one pending policy, one message catalogue
+      and one classifier.
+    </p>
+
+    <Snippet code={providerCode} name="app/providers.tsx" />
+
+    <p>
+      The defaults are behavioural only. There is nothing in
+      <code>UnruffledDefaults</code> about colour, radius, spacing or type, because the library emits no visual
+      and so has no opinion to configure.
+    </p>
+
+    <Snippet code={settingsCode} name="NotificationSettings.tsx" />
+
+    <p>
+      Three details here differ from the examples above. <code>announce.pending</code> is spoken only when the affordance
+      becomes visible, so a save that finishes in 80 ms says nothing at all.
+      <code>resetAfterMs: 4000</code> returns the action to <code>idle</code> after the confirmation has been seen;
+      the default is <code>undefined</code>, which keeps the result until something else changes it. And the
+      visual "Saved" is
+      <code>aria-hidden</code>, because the <code>Announcer</code> already said it once and saying it twice is worse
+      than saying it once.
+    </p>
+
+    <Demo
+      title="The shape of one save"
+      hint="Press it"
+      note="900 ms of latency: the affordance appears at 150 ms and stays for at least 400 ms. Nothing flashes, nothing flickers."
+    >
+      <AsyncButtonDemo client:visible latencyMs={900} label="Save changes" />
+    </Demo>
+  </Section>
+
+  <Section id="absent" title="What these examples deliberately do not do">
+    <p>
+      Every one of them is written against the 0.1.0 surface:
+      <code>useAction</code>, <code>useFailure</code>, <code>Announcer</code>,
+      <code>useAnnounce</code>, <code>UnruffledProvider</code> and
+      <code>usePrefersReducedMotion</code>. Nothing here uses a hook that does not exist yet, which is why the
+      delete has no confirmation step, the table has no bulk selection, and the form has no unsaved-changes
+      guard. Those are four named primitives on the
+      <a href={href("roadmap")}>roadmap</a> and none of them is in this release.
+    </p>
+    <p>
+      For the full list of what is exported today, with every option and return value, see the
+      <a href={href("api")}>API reference</a>.
+    </p>
+  </Section>
+</DocPage>

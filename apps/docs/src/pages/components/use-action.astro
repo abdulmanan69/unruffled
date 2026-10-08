@@ -1,0 +1,1147 @@
+---
+/**
+ * useAction reference.
+ *
+ * The flagship page. Everything here is checked against the source: the six states and
+ * their transitions come from `packages/core/src/machines/action/machine.ts`, the three
+ * tables from `types.ts`, `connect.ts` and `packages/react/src/action.ts`, and the four
+ * diagnostic rules from `packages/core/src/diagnostics.ts`.
+ */
+import DocPage from "../../components/docs/DocPage.astro";
+import Section from "../../components/docs/Section.astro";
+import Snippet from "../../components/docs/Snippet.astro";
+import Demo from "../../components/docs/Demo.astro";
+import Callout from "../../components/docs/Callout.astro";
+import PropsTable from "../../components/docs/PropsTable.astro";
+import Keys from "../../components/docs/Keys.astro";
+import Mistake from "../../components/docs/Mistake.astro";
+import { href } from "../../lib/site";
+import { AsyncButtonDemo, GuardDemo, RetryDemo } from "../../components/demos/index.tsx";
+import TimingTrace from "../../components/TimingTrace.tsx";
+
+const installCode = `npm install @unruffled/react`;
+
+const rootCode = `import { Announcer } from "@unruffled/react";
+
+export function App({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      {children}
+      <Announcer />
+    </>
+  );
+}`;
+
+const basicCode = `import { useAction } from "@unruffled/react";
+
+export function SaveCustomer({ id, form }: Props) {
+  const save = useAction(() => api.saveCustomer(id, form), {
+    key: \`customer:\${id}\`,
+    announce: { success: "Customer saved" },
+    onError: (failure) => {
+      toast(failure.message);
+    },
+  });
+
+  return (
+    <button {...save.triggerProps}>
+      {save.pending ? "Saving..." : "Save customer"}
+    </button>
+  );
+}`;
+
+const pendingVsBusyCode = `// busy    — work is in flight or settling. Drives aria-busy. True from the first
+//            millisecond of the request.
+// pending — the affordance should render. False for the first 150 ms, and still
+//            true for up to 400 ms after the request has already resolved.
+
+<button {...save.triggerProps}>
+  {save.pending ? <Spinner /> : null}
+  {save.pending ? "Saving" : "Save customer"}
+</button>`;
+
+const keyCode = `// Two components, two subtrees, one record.
+
+function InvoiceToolbar({ id }: { id: string }) {
+  const approve = useAction(() => api.approve(id), { key: \`invoice:\${id}\` });
+  return <button {...approve.triggerProps}>Approve</button>;
+}
+
+function InvoiceRow({ id }: { id: string }) {
+  const approve = useAction(() => api.approve(id), { key: \`invoice:\${id}\` });
+  return <button {...approve.triggerProps}>Approve</button>;
+}`;
+
+const registryCode = `import { createKeyRegistry } from "@unruffled/core";
+
+// One registry per test case, so a lock left behind by one case cannot
+// make the next one look like a duplicate submit.
+const registry = createKeyRegistry();
+
+const save = useAction(run, { key: "customer:42", registry });`;
+
+const concurrentCode = `// Adding separate items to a cart is additive, not a duplicate submit.
+const addToCart = useAction((sku: string) => api.addToCart(sku), {
+  guard: "allow-concurrent",
+});`;
+
+const retryCode = `const save = useAction(() => api.saveCustomer(form), {
+  key: \`customer:\${id}\`,
+  retry: { attempts: 2, backoff: { baseMs: 500, factor: 2, maxMs: 30_000, jitter: 0.5 } },
+});
+
+// \`backoff\` is a real state, so the wait is renderable rather than a hang.
+<button {...save.triggerProps}>
+  {save.state === "backoff" && save.retryInMs !== null
+    ? \`Retrying in \${Math.ceil(save.retryInMs / 1000)}s\`
+    : save.pending
+      ? "Saving"
+      : "Save"}
+</button>`;
+
+const manualRetryCode = `// No retry policy: nothing retries by itself, and \`canRetry\` says whether
+// offering the affordance would be honest for this particular failure.
+const save = useAction(() => api.saveCustomer(form), { key: "customer:42" });
+
+{save.status === "error" ? (
+  <div role="group">
+    <p>{save.failure?.message}</p>
+    {save.canRetry ? <button onClick={save.retry}>Try again</button> : null}
+  </div>
+) : null}`;
+
+const argsCode = `// One hook, one row per item. The argument travels with the trigger.
+const remove = useAction((sku: string) => api.removeLine(sku), {
+  key: \`cart:\${cartId}\`,
+});
+
+return lines.map((line) => (
+  <button
+    key={line.sku}
+    {...remove.getTriggerProps({
+      args: line.sku,
+      onClick: () => {
+        analytics.track("line_removed", { sku: line.sku });
+      },
+    })}
+  >
+    Remove
+  </button>
+));`;
+
+const cancelCode = `const upload = useAction((file: File, signal: AbortSignal) =>
+  fetch("/api/upload", { method: "POST", body: file, signal }),
+);
+
+<>
+  <button {...upload.getTriggerProps({ args: file })}>Upload</button>
+  {upload.busy ? <button onClick={upload.cancel}>Cancel</button> : null}
+</>`;
+
+const nonButtonCode = `// A div given a button role. The hook synthesises Enter and Space here,
+// because there is no native activation to piggyback on.
+<div role="button" tabIndex={0} {...save.triggerProps}>
+  {save.pending ? "Saving" : "Save"}
+</div>`;
+
+const stylingCode = `/* The trigger carries the whole lifecycle as attributes. No class names,
+   no inline styles, nothing to override. */
+
+button[data-pending] .spinner { display: inline-block; }
+button[aria-busy="true"]      { cursor: progress; }
+button[data-state="backoff"]  { border-color: var(--warning); }
+button[data-attempt]::after   { content: " (attempt " attr(data-attempt) ")"; }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+}`;
+
+const providerCode = `import { UnruffledProvider } from "@unruffled/react";
+
+// Timing policy and failure copy in one place. The provider is optional and
+// every hook works without it.
+<UnruffledProvider
+  defaults={{
+    pending: { delay: 0, min: 250 },
+    messages: { retryable: "Das hat nicht funktioniert. Bitte erneut versuchen." },
+    classify: (failure) => (failure.status === 418 ? "terminal" : undefined),
+  }}
+>
+  <App />
+</UnruffledProvider>`;
+
+const classifyCode = `const save = useAction(() => api.saveCustomer(form), {
+  // Our gateway returns 503 for a planned maintenance window, which is not
+  // worth an automatic retry. Returning undefined keeps the default mapping
+  // for every other status.
+  classify: (failure) =>
+    failure.status === 503 && failure.detail?.includes("maintenance") ? "terminal" : undefined,
+});`;
+
+const formCode = `function CustomerForm({ id }: { id: string }) {
+  const save = useAction((_args: void, signal) => api.saveCustomer(id, read(), signal), {
+    key: \`customer:\${id}\`,
+    announce: { success: "Customer saved" },
+    onError: () => {
+      // Rendered below, so UX1004 stays quiet.
+    },
+  });
+
+  const failure = useFailure(save.failure);
+  const fieldError = (path: string) =>
+    failure?.fields?.find((field) => field.path === path)?.message;
+
+  return (
+    <form onSubmit={(event) => { event.preventDefault(); save.trigger(); }}>
+      <Field name="email" error={fieldError("email")} />
+
+      {/* A validation failure is already on the fields. Anything else needs a summary. */}
+      {failure && failure.kind !== "validation" ? (
+        <p {...failure.summaryProps}>{failure.message}</p>
+      ) : null}
+
+      <button {...save.triggerProps}>
+        {save.pending ? "Saving" : "Save"}
+      </button>
+    </form>
+  );
+}`;
+
+const resetCode = `// A settled result persists by default, because a tick that vanishes before
+// the user has looked up from the keyboard never happened as far as they are
+// concerned. Opt into clearing it when the surface is transient.
+const save = useAction(run, { key: "customer:42", resetAfterMs: 4000 });
+
+{save.status === "success" ? <p role="status">Saved</p> : null}`;
+
+const destructiveCode = `// \`destructive\` without \`reversible\` reports UX1001 in a development build.
+// v0.1.0 does not ship the confirm and undo primitives that will set
+// \`reversible\` for you, so set it once you have provided a recovery path.
+const remove = useAction(() => api.deleteCustomer(id), {
+  key: \`customer:\${id}\`,
+  destructive: true,
+  reversible: true, // we keep a 10s undo window ourselves
+  announce: { success: "Customer deleted. Undo available for 10 seconds." },
+});`;
+
+const testCode = `import { createTestPorts } from "@unruffled/testing";
+
+// Module scope, so the port identity is stable across renders.
+const ports = createTestPorts();
+
+function Save() {
+  const save = useAction(run, { key: "customer:42", ports });
+  return <button {...save.triggerProps}>{save.pending ? "Saving" : "Save"}</button>;
+}
+
+// The thresholds are asserted by advancing a counter, not by sleeping.
+render(<Save />);
+await user.click(screen.getByRole("button"));
+
+act(() => { ports.clock.advance(149); });
+expect(screen.getByRole("button")).not.toHaveAttribute("data-pending");
+
+act(() => { ports.clock.advance(1); });
+expect(screen.getByRole("button")).toHaveAttribute("data-pending");`;
+
+const optionRows = [
+  {
+    name: "run",
+    type: "(args: A, signal: AbortSignal) => Promise<T>",
+    default: "required",
+    description:
+      "The work. The first argument to the hook, not a member of the options object. It receives the trigger arguments and an abort signal, and it is replaced on every committed render, so reading fresh state inside it is safe.",
+    why: "A handler captured at mount calls last render's function with last render's state. That stale-closure hazard is the defect hand-rolled versions of this hook almost always carry.",
+  },
+  {
+    name: "key",
+    type: "string",
+    description:
+      "Resource identity, for example customer:42. Actions declaring the same key are serialised across the whole application through one registry, so a second trigger coming from a different subtree is refused.",
+  },
+  {
+    name: "registry",
+    type: "KeyRegistry",
+    default: "the process-wide registry",
+    description:
+      "The registry backing key. Replace it to isolate a test, a sandbox or an embedded widget from the rest of the page.",
+  },
+  {
+    name: "guard",
+    type: '"single-flight" | "allow-concurrent"',
+    default: '"single-flight"',
+    description:
+      "How overlapping triggers are handled. Single-flight refuses a trigger while the key is held. Allow-concurrent lets every trigger start.",
+    why: "Single-flight is the default because an overlapping trigger is almost always a duplicate submit. The guard is read synchronously inside the event handler, before any await and before any validation, so there is no window in which a second click is accepted. Allow-concurrent is only correct for genuinely additive work, such as adding separate items to a cart.",
+  },
+  {
+    name: "pending",
+    type: "Partial<PendingPolicy>",
+    default: "delay 150, min 400",
+    description:
+      "When the pending affordance appears, and the minimum time it stays once it has appeared. Both are milliseconds.",
+    why: "The delay of 150 suppresses the affordance entirely for fast actions: a 60 ms save that flashes a spinner reads as a glitch, not as feedback. The minimum of 400 keeps it visible long enough to be perceived, so an action that resolves at 160 ms does not produce a 10 ms flicker. They are two thresholds because they solve two different problems.",
+  },
+  {
+    name: "destructive",
+    type: "boolean",
+    default: "false",
+    description:
+      "Marks the action irreversible. In a development build, true without reversible reports UX1001 on the first trigger.",
+  },
+  {
+    name: "reversible",
+    type: "boolean",
+    default: "false",
+    description:
+      "Records that a recovery path exists, which satisfies UX1001. The confirmation and undo primitives that will set this for you are not in v0.1.0, so set it yourself once you have built the recovery path.",
+  },
+  {
+    name: "announce",
+    type: "false | ActionAnnouncements",
+    default: "announcements on",
+    description:
+      "Strings read to assistive technology: pending, success and error. Setting the option to false opts out entirely.",
+    why: "Announcement is on by default and silence is the opt-out, which is the inverse of the ecosystem default. Success falls back to “Done.” and failure falls back to the normalised failure message, so the correct behaviour costs no configuration. The pending string is the only one with no fallback, because an announcement on every click is noise.",
+  },
+  {
+    name: "focus",
+    type: '"restore" | "none"',
+    default: '"restore"',
+    description:
+      "Where focus goes once the action settles. Restore refocuses the trigger only when focus was lost while the action ran, which happens when the surrounding subtree was replaced mid-flight. None leaves focus alone.",
+  },
+  {
+    name: "resetAfterMs",
+    type: "number | false",
+    default: "undefined",
+    description:
+      "Milliseconds after which a settled action returns to idle. Undefined or false keeps the result on screen indefinitely.",
+    why: "The result persists by default. A confirmation that disappears before the user has looked up from the keyboard did not happen as far as they are concerned.",
+  },
+  {
+    name: "retry",
+    type: "RetryPolicy",
+    default: "undefined",
+    description:
+      "attempts is the number of automatic retries after the first attempt; zero or omitted means manual retry only. backoff takes baseMs, factor, maxMs and jitter. An automatic retry only fires for a failure whose canRetry is true.",
+  },
+  {
+    name: "classify",
+    type: "(failure: NormalizedFailure) => FailureKind | undefined",
+    default: "undefined",
+    description:
+      "Overrides failure classification. Returning undefined falls through to the default status mapping, so one status can be special-cased without restating the table.",
+  },
+  {
+    name: "messages",
+    type: "Partial<Record<FailureKind, string>>",
+    default: "built-in copy",
+    description:
+      "User-facing copy per failure kind, so the taxonomy can be localised without re-implementing it.",
+  },
+  {
+    name: "online",
+    type: "() => boolean",
+    default: "navigator.onLine",
+    description:
+      "Whether the client believes it has a network, read at classification time so an offline failure is labelled offline rather than reported as a generic network error. Returns true when navigator is undefined, which is the server case.",
+  },
+  {
+    name: "onSuccess",
+    type: "(value: T) => void",
+    default: "undefined",
+    description: "Called on entry to success, with the resolved value, before onSettled.",
+  },
+  {
+    name: "onError",
+    type: "(failure: NormalizedFailure) => void",
+    default: "undefined",
+    description:
+      "Called on entry to error, with the normalised failure, before onSettled. Its absence reports UX1004 in a development build, because a rejection that reaches the console but not the user makes a failed save look identical to a successful one.",
+  },
+  {
+    name: "onSettled",
+    type: "() => void",
+    default: "undefined",
+    description: "Called after onSuccess or onError, on both outcomes.",
+  },
+  {
+    name: "ports",
+    type: "Partial<Ports>",
+    default: "provider, then DOM",
+    description:
+      "Replaces individual ports. Resolution order is this override, then the provider's ports, then DOM-backed ports. This is how the timing in the tests above is deterministic.",
+  },
+  {
+    name: "root",
+    type: "PortRoot",
+    default: "the owning document",
+    description:
+      "Scopes listeners and focus reads to a shadow root or a secondary window. Core never touches a global document, so a trigger inside a shadow root restores focus correctly without any special-casing.",
+  },
+];
+
+const returnRows = [
+  {
+    name: "state",
+    type: '"idle" | "busy" | "settling" | "backoff" | "success" | "error"',
+    description: "The raw machine state, for styling and for copy that needs to distinguish backoff.",
+  },
+  {
+    name: "status",
+    type: '"idle" | "pending" | "success" | "error"',
+    description:
+      "The four states a user can distinguish. busy, settling and backoff all report pending, because from the user's point of view the action has not finished.",
+  },
+  {
+    name: "pending",
+    type: "boolean",
+    description:
+      "Whether the pending affordance should render. False during the first delay milliseconds even though work has started, and still true while settling.",
+  },
+  {
+    name: "busy",
+    type: "boolean",
+    description:
+      "Whether work is in flight, settling or waiting to retry. Drives aria-busy and activation suppression, not the spinner.",
+  },
+  { name: "data", type: "T | null", description: "The last resolved value, or null." },
+  {
+    name: "failure",
+    type: "NormalizedFailure | null",
+    description:
+      "The normalised failure, carrying kind, message, detail, status, retryAfterMs, fields, canRetry and raw. Pass it to useFailure for field-scoped errors.",
+  },
+  {
+    name: "attempt",
+    type: "number",
+    description: "0 when idle, 1 during the first attempt, higher while retrying.",
+  },
+  {
+    name: "canRetry",
+    type: "boolean",
+    description:
+      "Whether offering a retry affordance is honest for the current failure. False for aborted, auth, forbidden, missing, validation and terminal.",
+  },
+  {
+    name: "retryAt",
+    type: "number | null",
+    description:
+      "Clock reading at which an automatic retry fires, or null. A reading rather than a duration, because a duration is stale the moment it is read.",
+  },
+  {
+    name: "retryInMs",
+    type: "number | null",
+    description:
+      "Live milliseconds until the automatic retry, derived from retryAt through the frame port. Bucketed to 100 ms, or to 1000 ms under reduced motion, so the number keeps counting without animating.",
+  },
+  {
+    name: "trigger(args)",
+    type: "(args: A) => void",
+    description:
+      "Starts the action. Refused silently while the resource key is held. Use it for triggers that are not a click, such as a form submit.",
+  },
+  {
+    name: "retry()",
+    type: "() => void",
+    description: "Re-runs the failed attempt with the same arguments. Valid from error and from backoff.",
+  },
+  {
+    name: "reset()",
+    type: "() => void",
+    description: "Returns a settled action to idle and clears data and failure.",
+  },
+  {
+    name: "cancel()",
+    type: "() => void",
+    description:
+      "Aborts the request in flight and returns to idle without reporting a failure. From backoff it commits the failure instead, which is how a user declines a pending retry.",
+  },
+  {
+    name: "attrs",
+    type: "ActionAttrs",
+    description:
+      "The five attributes, framework-neutral. triggerProps is this plus handlers and a ref; read attrs directly when you are putting the state on a wrapper rather than on the trigger.",
+  },
+  {
+    name: "triggerProps",
+    type: "TriggerProps",
+    description: "Spread straight onto the trigger element.",
+  },
+  {
+    name: "getTriggerProps(overrides?)",
+    type: "(overrides?: TriggerPropOverrides<A>) => TriggerProps",
+    description:
+      "The same props with args, onClick, onKeyDown and ref composed in. Your handlers run after the library's own, and only when the activation was not suppressed. disabled is typed as never.",
+  },
+];
+
+const triggerRows = [
+  {
+    name: "type",
+    type: '"button"',
+    description:
+      'Always set, so a trigger inside a form does not submit it by accident. Pass type="submit" yourself after the spread if submitting is what you want.',
+  },
+  {
+    name: "aria-busy",
+    type: "boolean",
+    description:
+      "True while work is in flight, settling or waiting to retry, so assistive technology knows the region is updating.",
+  },
+  {
+    name: "aria-disabled",
+    type: "true | undefined",
+    description:
+      'True while activation is suppressed, and omitted otherwise rather than rendered as false, because aria-disabled="false" is noise in the accessibility tree. Never paired with disabled.',
+  },
+  {
+    name: "data-pending",
+    type: '"" | undefined',
+    description:
+      "Present with an empty value while the pending affordance should render. The CSS hook for a spinner.",
+  },
+  {
+    name: "data-state",
+    type: "ActionStateValue",
+    description:
+      "The raw machine state, so the full lifecycle including backoff is styleable from CSS alone.",
+  },
+  {
+    name: "data-attempt",
+    type: "string | undefined",
+    description:
+      "The attempt number from the second attempt onwards, and absent on the first. For retry copy.",
+  },
+  {
+    name: "onClick",
+    type: "(event: MouseEvent<HTMLElement>) => void",
+    description:
+      "Triggers the action. While busy it calls preventDefault and stopPropagation and returns, so a parent row handler does not treat the refused click as a selection.",
+  },
+  {
+    name: "onKeyDown",
+    type: "(event: KeyboardEvent<HTMLElement>) => void",
+    description:
+      "Suppresses Enter and Space while busy. On a non-button element it also synthesises activation, which a native button does not need.",
+  },
+  {
+    name: "ref",
+    type: "(element: HTMLElement | null) => void",
+    description: "Records the element so focus can be restored if it was lost while the action ran.",
+  },
+];
+
+const keyRows = [
+  {
+    keys: ["Enter"],
+    action:
+      "Triggers the action. On a native button the browser turns this into a click; the hook does not fire a second time.",
+  },
+  { keys: ["Space"], action: "Triggers the action, by the same route as Enter." },
+  {
+    keys: ["Tab"],
+    action:
+      "Moves to and from the trigger. It stays in the tab order throughout, because it is never disabled.",
+  },
+  {
+    keys: ["Enter"],
+    action:
+      "While busy: nothing. The keydown handler calls preventDefault, and the click handler refuses as well.",
+  },
+  {
+    keys: ["Space"],
+    action: "While busy: nothing, and the page does not scroll, because the default is prevented.",
+  },
+];
+
+const meta = [
+  { label: "Import", value: "@unruffled/react" },
+  { label: "React layer", value: "2.07 kB brotli" },
+  { label: "States", value: "6" },
+];
+---
+
+<DocPage
+  title="useAction"
+  eyebrow="Primitive"
+  path="components/use-action"
+  meta={meta}
+  lede="One hook owns the lifecycle of one asynchronous action: the synchronous duplicate guard, the pending affordance that neither flashes nor flickers, abort on unmount, classified failures, automatic retry with an observable wait, and the announcement a screen-reader user hears."
+  description="useAction reference: the six-state action machine, resource keys, retry, cancellation, the full options and return tables, accessibility and keyboard behaviour."
+>
+  <Section id="description" title="Description">
+    <p>
+      <code>useAction</code> takes the work as its first argument and an options object as its second. The work
+      receives the trigger arguments and an <code>AbortSignal</code>, and it is replaced on every committed
+      render, so reading fresh state inside it is safe.
+    </p>
+
+    <p>
+      Underneath is a six-state machine. Four of those states are what a user can distinguish, which is what <code
+        >status</code
+      > reports. The other two exist for timing, and they are the reason this is a machine rather than a boolean.
+    </p>
+
+    <ul>
+      <li>
+        <strong><code>idle</code></strong> — before the first trigger, and again after <code>reset()</code>,
+        after a <code>resetAfterMs</code> window elapses, after <code>cancel()</code>, and after an aborted
+        request. An abort is our own cancellation, not a failure, so it does not surface here as an error.
+      </li>
+      <li>
+        <strong><code>busy</code></strong> — entered on a trigger that the guard allows. The request is an effect
+        of this state, so its lifetime is exactly this state. Whether the pending affordance is visible yet is context
+        driven by the delay timer, not a separate state.
+      </li>
+      <li>
+        <strong><code>settling</code></strong> — entered when the request settles while the affordance has been
+        visible for less than <code>pending.min</code>. The outcome is already known and is held here until
+        the minimum has elapsed.
+      </li>
+      <li>
+        <strong><code>backoff</code></strong> — entered when a retryable failure arrives and the retry budget is
+        not exhausted. The machine waits here for the computed delay, then retries.
+      </li>
+      <li>
+        <strong><code>success</code></strong> — entered on resolve when no hold is needed, or from
+        <code>settling</code> with a stashed success. On entry it announces politely and calls
+        <code>onSuccess</code> then <code>onSettled</code>.
+      </li>
+      <li>
+        <strong><code>error</code></strong> — entered on reject when no hold and no retry apply, from
+        <code>settling</code> with a stashed failure, or from <code>backoff</code> when the pending retry is cancelled.
+        On entry it announces assertively and calls <code>onError</code> then
+        <code>onSettled</code>.
+      </li>
+    </ul>
+
+    <h3>Why settling and backoff are states</h3>
+
+    <p>
+      <code>settling</code> exists so a fast action never flashes and a shown affordance never flickers. Those are
+      two different thresholds. The 150 ms delay means a 60 ms save shows nothing at all. The 400 ms minimum means
+      a save that resolves at 160 ms, just after the affordance appeared, does not produce a 10 ms flicker: the
+      outcome waits in <code>settling</code> until the affordance has been on screen long enough to be read. A single
+      boolean cannot express both thresholds, and splitting visibility into its own state would double the state
+      count of every machine that composes this one.
+    </p>
+
+    <p>
+      <code>backoff</code> exists so a waiting retry is observable rather than a hang. Retrying inside the data
+      layer looks identical to a stuck request from the outside: the button is pending, nothing is happening, and
+      the user has no way to tell whether to wait or to press again. Because the wait is a state with a <code
+        >retryAt</code
+      > reading on it, the UI can render <em>retrying in 3s</em> and the user can decline it with <code
+        >cancel()</code
+      >.
+    </p>
+
+    <p>
+      <code>busy</code>, <code>settling</code> and <code>backoff</code> all report
+      <code>status: "pending"</code>, so simple call sites never see the distinction. Read
+      <code>state</code> when you need it.
+    </p>
+  </Section>
+
+  <Section id="demo" title="Live demo">
+    <p>Both of these are real calls into the library. Nothing here is mocked and no outcome is hard-coded.</p>
+
+    <Demo
+      title="One button, one declaration"
+      hint="900 ms request"
+      note="Notice three things: the label changes instead of the button disappearing, the control keeps focus throughout, and the result stays on screen afterwards."
+    >
+      <AsyncButtonDemo client:load latencyMs={900} label="Save customer" />
+    </Demo>
+
+    <Demo
+      title="Where the thresholds fall"
+      hint="700 ms request · delay 150 · min 400"
+      note="The affordance appears at 150 ms, the request resolves at 700 ms, and the affordance stays until it has been visible for 400 ms."
+    >
+      <TimingTrace client:visible latencyMs={700} windowMs={1200} />
+    </Demo>
+  </Section>
+
+  <Section id="installation" title="Installation">
+    <Snippet code={installCode} lang="bash" name="shell" />
+
+    <p>
+      <code>@unruffled/react</code> depends on <code>@unruffled/core</code> and on nothing else. Both packages have
+      zero runtime dependencies. React is a peer dependency, <code>^18</code> or
+      <code>^19</code>. The React layer is 2.07 kB brotli; the React and core layers together, with everything
+      retained, are 7.08 kB brotli.
+    </p>
+
+    <p>
+      One further step, and it is the one that matters: render <code>Announcer</code> once near the root. Announcement
+      is on by default, and mounting the live region is all that is required. Without it, a pending state that outlasts
+      400 ms reports{" "}
+      <a href={href("diagnostics/ux1003")}>UX1003</a>, because the library can tell the difference between
+      announcing correctly and announcing into a void.
+    </p>
+
+    <Snippet code={rootCode} name="src/App.tsx" />
+
+    <Callout tone="note" title="The provider is optional">
+      <p>
+        Every hook works without <code>UnruffledProvider</code>. A library that only behaves correctly once a
+        provider is wired has made its first-run experience the thing most likely to be got wrong. Add it when
+        you want one timing policy, one failure taxonomy or one root for the whole application.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="basic-usage" title="Basic usage">
+    <Snippet code={basicCode} name="src/customers/SaveCustomer.tsx" />
+
+    <p>
+      That is the whole call site. The second click is refused synchronously, the spinner does not appear for
+      a fast save and does not flicker for a slow one, the request aborts if the component unmounts, the
+      failure is classified and only offered for retry when retrying could work, and both outcomes are
+      announced.
+    </p>
+
+    <h3>pending and busy are different</h3>
+
+    <p>
+      This is the one distinction worth learning before anything else. <code>busy</code> is true from the first
+      millisecond of the request. <code>pending</code> is whether the affordance should render.
+    </p>
+
+    <Snippet code={pendingVsBusyCode} name="pending-vs-busy.tsx" />
+
+    <p>
+      Spread <code>triggerProps</code> and you get the correct attributes without reading either flag: the element
+      carries <code>aria-busy</code> from <code>busy</code> and <code>data-pending</code> from
+      <code>pending</code>. Read the booleans only for content, such as a label or a spinner element.
+    </p>
+  </Section>
+
+  <Section id="advanced-usage" title="Advanced usage">
+    <h3>Resource keys and cross-component contention</h3>
+
+    <p>
+      A boolean on one hook cannot express the case that actually breaks. Two buttons in two different
+      subtrees that write the same record have to contend, and neither one knows the other exists. So the
+      guard is not a flag on the hook; it is a registry keyed by resource identity, written synchronously
+      inside the event handler, and shared by every hook that declares the same key.
+    </p>
+
+    <Snippet code={keyCode} name="src/invoices/approve.tsx" />
+
+    <p>
+      Both of those contend. Press either and the other is refused until the request settles. The key is a
+      string you choose, and it should be derived from the resource, not from the component.
+    </p>
+
+    <Demo
+      title="Two components, one record"
+      hint="Toggle the shared key"
+      note="Press one, then immediately press the other. With a key, the second is refused. Without one, both writes land and the value the user ends up with depends on which response arrives last."
+    >
+      <GuardDemo client:visible />
+    </Demo>
+
+    <p>
+      An overlapping trigger on an action with no key cannot be judged, because the library has no way to know
+      whether the two triggers touch the same resource. It is reported as{" "}
+      <a href={href("diagnostics/ux1002")}>UX1002</a> rather than silently allowed or silently blocked.
+    </p>
+
+    <p>
+      The registry is process-wide by default, because the contention it models is genuinely global. Pass your
+      own when you need isolation, which is mostly tests.
+    </p>
+
+    <Snippet code={registryCode} name="src/test/registry.ts" />
+
+    <p>When overlapping work is additive rather than duplicated, say so explicitly.</p>
+
+    <Snippet code={concurrentCode} name="allow-concurrent.tsx" />
+
+    <h3>Automatic retry</h3>
+
+    <p>
+      A retry policy only retries failures whose <code>canRetry</code> is true. A 403 is never retried, and neither
+      is a 422: both would be a pointless round trip and a false promise to the user. The delay comes from exponential
+      backoff with full jitter at 0.5 by default, because without jitter every client that failed at the same moment
+      retries at the same moment, which is how a brief outage becomes a sustained one.
+    </p>
+
+    <Snippet code={retryCode} name="src/customers/save-with-retry.tsx" />
+
+    <Demo
+      title="Retry with a live countdown"
+      hint="Fails twice, then succeeds"
+      note="The state goes busy, backoff, busy, backoff, busy, success. The countdown is a real value derived from retryAt through the frame port."
+    >
+      <RetryDemo client:visible />
+    </Demo>
+
+    <p>
+      With no retry policy, nothing retries by itself. Offer the affordance yourself, and use
+      <code>canRetry</code> to decide whether offering it is honest.
+    </p>
+
+    <Snippet code={manualRetryCode} name="manual-retry.tsx" />
+
+    <h3>Parameterised actions</h3>
+
+    <p>
+      When one hook serves many triggers, pass the argument on the trigger rather than creating a hook per
+      row. <code>getTriggerProps</code> composes an <code>args</code> override, and your own
+      <code>onClick</code>, <code>onKeyDown</code> and <code>ref</code> alongside it. Your handlers run after the
+      library's and only when the activation was not suppressed, so an analytics call does not fire on a refused
+      duplicate click.
+    </p>
+
+    <Snippet code={argsCode} name="src/cart/LineActions.tsx" />
+
+    <p>
+      The arguments of the current attempt are kept, so <code>retry()</code> re-runs the attempt that failed with
+      the arguments it was given. <code>TriggerPropOverrides</code> types
+      <code>disabled</code> as <code>never</code>: it is not an oversight, and the reason is under
+      <a href="#accessibility">Accessibility</a> below.
+    </p>
+
+    <h3>Cancellation and abort</h3>
+
+    <p>
+      The request is declared as an effect of the <code>busy</code> state, so leaving <code>busy</code> for any
+      reason disposes it, and disposal aborts. That single fact covers three cases that are normally handled separately
+      or not at all:
+    </p>
+
+    <ol>
+      <li>
+        <strong>Unmount.</strong> The service stops, the effect is disposed, the request aborts. Nothing resolves
+        into a dead component. Strict Mode's deliberate mount, unmount, remount is survived without tearing down
+        the machine, because the stop is deferred by a microtask and cancelled if a mount follows immediately.
+      </li>
+      <li>
+        <strong>Supersession.</strong> A new attempt disposes the previous effect, which aborts the stale request
+        with the reason <code>superseded</code>.
+      </li>
+      <li>
+        <strong><code>cancel()</code>.</strong> Aborts with the reason <code>cancelled</code> and returns to idle.
+        The resulting rejection is recognised as an abort, so it is not classified as a failure, not retried and
+        not announced. Calling <code>cancel()</code> from <code>backoff</code> instead commits the failure, which
+        is how a user declines a pending retry.
+      </li>
+    </ol>
+
+    <Snippet code={cancelCode} name="src/files/Upload.tsx" />
+
+    <p>
+      Machines never call <code>fetch</code>. The work is handed to the transport port, which supplies the
+      signal. That is why unmounting mid-request, superseding a stale attempt and cancelling by hand all work
+      by the same mechanism rather than three.
+    </p>
+  </Section>
+
+  <Section id="api" title="API">
+    <p>
+      <code>useAction(run, options?)</code>. Three tables: what goes in, what comes back, and what
+      <code>triggerProps</code> puts on the element. The options type is everything
+      <code>ActionProps</code> accepts except the work itself, plus the port overrides.
+    </p>
+
+    <h3>Options</h3>
+    <PropsTable rows={optionRows} caption="useAction options" />
+
+    <h3>Returns</h3>
+    <PropsTable rows={returnRows} nameHeading="Value" caption="useAction return value" />
+
+    <h3>triggerProps</h3>
+    <PropsTable
+      rows={triggerRows}
+      nameHeading="Attribute"
+      caption="Attributes and handlers spread by triggerProps"
+    />
+
+    <Callout tone="note" title="There is no disabled">
+      <p>
+        <code>TriggerProps</code> has no <code>disabled</code> field and
+        <code>TriggerPropOverrides</code> types it as <code>never</code>. This is the most consequential
+        decision in the hook, and the next section is why.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="accessibility" title="Accessibility">
+    <h3>aria-busy and aria-disabled, not disabled</h3>
+
+    <p>
+      A <code>disabled</code> element is removed from the tab order. Disabling a button at the moment it is pressed
+      therefore throws the user's focus to the top of the document and loses their place in the page. For a keyboard
+      user that is a navigation reset in the middle of their own action; for a screen reader user the control they
+      were on simply ceases to exist, with no explanation.
+    </p>
+
+    <p>
+      So the trigger stays focusable. <code>aria-busy</code> is true while work is in flight, settling or waiting
+      to retry. <code>aria-disabled</code> is true while activation is suppressed, and is omitted rather than rendered
+      as <code>false</code>, because <code>aria-disabled="false"</code> is noise in the accessibility tree. Activation
+      is refused in the handlers instead: the click handler returns early, and the keydown handler prevents the
+      default for Enter and Space. The second press is blocked, the state is announced, and focus is preserved.
+    </p>
+
+    <p>
+      Adding <code>disabled</code> by hand to a control that has a reason for being unavailable is the defect{
+        " "
+      }
+      <a href={href("diagnostics/ux1005")}>UX1005</a> describes. The type catches it when it goes through
+      <code>getTriggerProps</code>, where <code>disabled</code> is <code>never</code>; written straight onto
+      your own element it still compiles. UX1005 is one of the four statically decidable rules and belongs to
+      <code>@unruffled/eslint-plugin</code>, which has not shipped, so nothing reports it at runtime in 0.1.0.
+    </p>
+
+    <h3>Focus retention</h3>
+
+    <p>
+      Normally there is nothing to restore, because the trigger is never disabled and so never loses focus.
+      The case the hook does handle is the one that bites in optimistic lists: the surrounding subtree is
+      replaced while the action is in flight, which leaves focus on the document body. On the transition from
+      pending to settled, if the owning root reports no active element, focus returns to the trigger with <code
+        >preventScroll</code
+      >. Set <code>focus: "none"</code> for actions triggered without a pointer or a key press, where moving focus
+      would be an interruption.
+    </p>
+
+    <h3>Announcements</h3>
+
+    <p>
+      Announcement is on by default and silence is the opt-out. With no <code>announce</code> option at all, success
+      announces <em>Done.</em> politely and failure announces the normalised failure message assertively. Failures
+      interrupt on purpose: a user who has moved on still needs to know the save failed. The pending string has
+      no fallback, so nothing is announced when work starts unless you supply <code>announce.pending</code>;
+      an announcement on every click would be noise.
+    </p>
+
+    <p>
+      All three strings are overridable, and <code>announce: false</code> turns the lot off. Reach for that only
+      when another live region is already reporting the same outcome, and see the mistakes below.
+    </p>
+
+    <h3>The rules this hook reports</h3>
+
+    <p>
+      Every rule below fires when the wiring is wrong, never when an accessibility feature is enabled. They
+      are development-only: <code>__DEV__</code> is replaced with <code>false</code> in the default build, so the
+      rule table, the formatter and every call site collapse to nothing and the production bundle carries no diagnostics
+      bytes.
+    </p>
+
+    <ul>
+      <li>
+        <strong><a href={href("diagnostics/ux1001")}>UX1001</a></strong> — reported on the first trigger when <code
+          >destructive</code
+        > is true and <code>reversible</code> is not. An irreversible action can be fired by one mis-click or a
+        stray Enter on a focused control, and the user has no way back.
+      </li>
+      <li>
+        <strong><a href={href("diagnostics/ux1002")}>UX1002</a></strong> — reported when a second trigger arrives
+        while the action is busy and no key was given. Two overlapping writes to the same resource land in nondeterministic
+        order.
+      </li>
+      <li>
+        <strong><a href={href("diagnostics/ux1003")}>UX1003</a></strong> — reported at settle time when the pending
+        affordance was visible for 400 ms or more and no live region was mounted. Checked on the evidence that the
+        wait actually happened, not on the possibility that it might. A sighted user had clear feedback for that
+        whole period and a screen reader user had none.
+      </li>
+      <li>
+        <strong><a href={href("diagnostics/ux1004")}>UX1004</a></strong> — reported on entry to
+        <code>error</code> when there is no <code>onError</code>. The rejection reaches the console but not
+        the user, so a failed save looks identical to a successful one.
+      </li>
+    </ul>
+  </Section>
+
+  <Section id="keyboard" title="Keyboard">
+    <Keys rows={keyRows} />
+
+    <p>
+      Keyboard activation is synthesised only for a non-button element. A native
+      <code>button</code> already turns Enter and Space into a click, so firing the action from the keydown handler
+      as well would run it twice. The handler checks the tag name and only synthesises activation when the element
+      is not a <code>BUTTON</code>.
+    </p>
+
+    <Snippet code={nonButtonCode} name="non-button-trigger.tsx" />
+
+    <Callout tone="warning" title="Prefer a real button">
+      <p>
+        The non-button path exists because design systems ship these, not because it is a good idea. A native
+        button brings activation, form participation, the correct default role and platform shortcuts you will
+        otherwise reimplement one at a time.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="customization" title="Customization">
+    <h3>Styling</h3>
+
+    <p>
+      The library emits no CSS, no class names and no DOM of its own. The trigger carries the lifecycle as
+      attributes, so the visual is entirely yours and there is nothing to override.
+    </p>
+
+    <Snippet code={stylingCode} lang="css" name="src/styles/action.css" />
+
+    <h3>Timing and copy in one place</h3>
+
+    <p>
+      Setting the pending policy per call site is how inconsistency gets into a product. The provider holds
+      the defaults, and a hook's own options are merged on top of them. The provider's defaults are
+      behavioural only: there is nothing about colour, radius, spacing or typography, because the library has
+      no visual and so has no opinion to configure.
+    </p>
+
+    <Snippet code={providerCode} name="src/main.tsx" />
+
+    <h3>Classification</h3>
+
+    <p>
+      <code>classify</code> replaces the status mapping for the cases you care about and falls through to the default
+      for everything else, so one special case does not mean restating the table.
+    </p>
+
+    <Snippet code={classifyCode} name="src/api/classify.ts" />
+
+    <h3>Ports</h3>
+
+    <p>
+      Every impure capability is injected: clock, scheduler, storage, navigation, doc, announcer, transport
+      and logger. Pass <code>ports</code> to replace any of them, and <code>root</code> to scope listeners and focus
+      reads to a shadow root or a secondary window. The clock is the one most often replaced, because it is what
+      makes a 150 ms threshold assertable without sleeping.
+    </p>
+
+    <Snippet code={testCode} name="src/customers/save.test.tsx" />
+
+    <p>There are 50 tests in the repository and none of them sleep.</p>
+  </Section>
+
+  <Section id="examples" title="Examples">
+    <h3>A form, with field errors</h3>
+
+    <p>
+      Validation belongs on the form, never in a toast. Hand <code>save.failure</code> to{" "}
+      <a href={href("components/use-failure")}>useFailure</a>, which splits field-scoped messages out of the
+      body shapes real APIs return.
+    </p>
+
+    <Snippet code={formCode} name="src/customers/CustomerForm.tsx" />
+
+    <h3>A result that clears itself</h3>
+
+    <Snippet code={resetCode} name="transient-result.tsx" />
+
+    <h3>A destructive action</h3>
+
+    <Snippet code={destructiveCode} name="src/customers/DeleteCustomer.tsx" />
+
+    <Callout tone="note" title="What is not here yet">
+      <p>
+        v0.1.0 ships <code>useAction</code>, <code>useFailure</code>, <code>Announcer</code>,
+        <code>useAnnounce</code>, <code>UnruffledProvider</code>, <code>usePrefersReducedMotion</code>,
+        <code>useMachine</code>, <code>useCountdown</code>, <code>createDomPorts</code> and the
+        <code>@unruffled/testing</code> helpers. The confirmation, undo, bulk and partial-failure primitives referenced
+        by some diagnostic messages are on the{" "}
+        <a href={href("roadmap")}>roadmap</a> and are not installable. Where a rule names one, the underlying option
+        it would set is public, so you can satisfy the rule with your own implementation today.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="mistakes" title="Common mistakes">
+    <Mistake
+      title="Adding disabled to the trigger"
+      why="A disabled element leaves the tab order. The user pressed the button, and the browser's answer is to move their focus to the top of the document. The trigger is already aria-disabled and already refuses the second press, so the attribute adds nothing but the regression. TriggerProps never carries a disabled key, and TriggerPropOverrides types it as never so getTriggerProps rejects one; written directly on your own element, as below, it still compiles. That is the case UX1005 describes, and the ESLint plugin that will catch it has not shipped yet."
+      bad={`<button {...save.triggerProps} disabled={save.pending}>
+  {save.pending ? "Saving" : "Save"}
+</button>`}
+      good={`// The spread already carries aria-busy and aria-disabled.
+// Change the label, not the tab order.
+<button {...save.triggerProps}>
+  {save.pending ? "Saving" : "Save"}
+</button>`}
+    />
+
+    <Mistake
+      title="Omitting the resource key"
+      why="Without a key the guard has nothing to serialise on. A second trigger from a different component writes the same record, the two responses land in whatever order the network chooses, and the value the user ends up with depends on timing. Keying by component instead of by resource has the same effect, because two components can write one record."
+      bad={`// Toolbar and row both save invoice 7. Neither knows the other exists.
+const approve = useAction(() => api.approve(id));`}
+      good={`// Derived from the resource, so every hook touching it contends.
+const approve = useAction(() => api.approve(id), {
+  key: \`invoice:\${id}\`,
+});`}
+    />
+
+    <Mistake
+      title="Reading pending to decide whether to call trigger"
+      why="pending is a rendered value, so it is at least one render behind the press. Two clicks inside that window both see false and both pass the check. The real guard is synchronous and inside the machine: it reads the registry in the event handler, before any await and before any validation. Calling trigger unconditionally is correct, because a duplicate is refused at the point it is made."
+      bad={`<button
+  onClick={() => {
+    if (!save.pending) save.trigger();
+  }}
+>
+  Save
+</button>`}
+      good={`// Refused synchronously when the key is held. No flag to read.
+<button {...save.triggerProps}>Save</button>
+
+// For a non-click trigger, the same applies:
+<form onSubmit={(event) => { event.preventDefault(); save.trigger(); }}>`}
+    />
+
+    <Mistake
+      title='Setting announce: false because a toast "already says it"'
+      why="A toast is not a live region unless the toast library made it one, and most render into a portal with no aria-live at all. Turning the announcement off on that assumption leaves a screen reader user with no feedback that the action started, finished or failed. If the toast is genuinely announced, you have a different problem: the same message twice. Override the string to something shorter instead of silencing the channel."
+      bad={`const save = useAction(run, {
+  key: "customer:42",
+  announce: false, // the toast says "Saved"
+  onSuccess: () => toast("Saved"),
+});`}
+      good={`// One announcement, worded for the ear rather than the eye.
+const save = useAction(run, {
+  key: "customer:42",
+  announce: { success: "Customer saved" },
+  onSuccess: () => toast("Saved"),
+});`}
+    />
+
+    <Mistake
+      title="Retrying a failure that cannot succeed"
+      why="A retry button on a 403 or a 422 is a lie: the same request will fail the same way, and the user presses it twice before concluding the product is broken. canRetry is false for aborted, auth, forbidden, missing, validation and terminal, and an automatic retry policy already honours it. Branch on it in your own UI too."
+      bad={`{save.status === "error" ? (
+  <button onClick={save.retry}>Try again</button>
+) : null}`}
+      good={`{save.status === "error" ? (
+  <>
+    <p>{save.failure?.message}</p>
+    {save.canRetry ? <button onClick={save.retry}>Try again</button> : null}
+  </>
+) : null}`}
+    />
+
+    <Mistake
+      title="Shipping without Announcer mounted"
+      why="Announcement is on by default, but the default announcer port is inert until the live region mounts. Every announcement the hook makes goes nowhere, and nothing in the visual UI tells you. UX1003 reports it at settle time, with the elapsed pending duration, once a wait has actually outlasted 400 ms."
+      bad={`// Announcements are configured and never heard.
+createRoot(el).render(<App />);`}
+      good={`// One instance, once, near the root.
+createRoot(el).render(
+  <>
+    <App />
+    <Announcer />
+  </>,
+);`}
+    />
+  </Section>
+</DocPage>

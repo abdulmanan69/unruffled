@@ -1,0 +1,616 @@
+---
+/**
+ * useFailure — the failure taxonomy page.
+ *
+ * Every status mapping on this page is read from `normalizeError.ts`. If that table changes,
+ * this page changes with it; a documented taxonomy that has drifted from the code is worse
+ * than no taxonomy at all.
+ */
+import DocPage from "../../components/docs/DocPage.astro";
+import Section from "../../components/docs/Section.astro";
+import Snippet from "../../components/docs/Snippet.astro";
+import Demo from "../../components/docs/Demo.astro";
+import Callout from "../../components/docs/Callout.astro";
+import PropsTable from "../../components/docs/PropsTable.astro";
+import Mistake from "../../components/docs/Mistake.astro";
+import { href } from "../../lib/site";
+import { FailureKindsDemo } from "../../components/demos/index.tsx";
+
+const basicUsage = `import { useAction, useFailure } from "@unruffled/react";
+
+function SaveCustomer({ id, form }: Props) {
+  const save = useAction(() => api.saveCustomer(id, form), { key: \`customer:\${id}\` });
+  const failure = useFailure(save.failure);
+
+  return (
+    <>
+      <button {...save.triggerProps}>{save.pending ? "Saving..." : "Save"}</button>
+
+      {/* Validation belongs on the fields, never in a banner. */}
+      {failure?.kind === "validation" ? <FieldErrors errors={failure.fields} /> : null}
+
+      {failure && failure.kind !== "validation" ? (
+        <p {...failure.summaryProps}>{failure.message}</p>
+      ) : null}
+
+      {/* canRetryNow, not canRetry: a 429 inside its window is not retryable yet. */}
+      {failure?.canRetryNow ? <button onClick={save.retry}>Try again</button> : null}
+
+      {failure?.retryInMs ? <p>Try again in {Math.ceil(failure.retryInMs / 1000)}s</p> : null}
+    </>
+  );
+}`;
+
+const nullCase = `// Pass the rejection straight through. null in, null out.
+const failure = useFailure(save.failure);
+
+if (failure === null) {
+  // Nothing failed. The hook holds no timers and no subscription in this state.
+}`;
+
+const payloads = `// 1. RFC 9457 application/problem+json
+{ status: 422, body: { title: "Invalid request", detail: "email is taken",
+                       errors: [{ detail: "is already taken", source: { pointer: "/data/attributes/email" } }] } }
+// -> kind "validation", canRetry false, detail "email is taken",
+//    fields [{ path: "email", message: "is already taken" }]
+
+// 2. JSON:API source.pointer, RFC 6901 escapes resolved
+{ status: 422, body: { errors: [{ title: "too long", source: { pointer: "/data/attributes/billing~1note" } }] } }
+// -> fields [{ path: "billing/note", message: "too long" }]
+
+// 3. Rails and DRF style field_errors map, values string or string[]
+{ status: 400, body: { field_errors: { email: ["is already taken"], "billing.postcode": "is required" } } }
+// -> kind "validation" (400 only because fields are present),
+//    fields [{ path: "email", ... }, { path: "billing.postcode", ... }]
+
+// 4. Flat path and message list. path | field | name are all read.
+{ status: 422, body: { violations: [{ path: ["billing", "address", "postcode"], message: "is required" }] } }
+// -> fields [{ path: "billing.address.postcode", message: "is required" }]
+
+// 5. Bare message or error, no fields
+{ status: 503, body: { message: "upstream timeout" } }
+// -> kind "retryable", canRetry true, detail "upstream timeout",
+//    message "That did not go through. Try again." (the catalog string, not the server's)
+
+// 6. fetch network failure
+new TypeError("Failed to fetch")
+// -> kind "offline" in a browser, "retryable" when the online flag is unknown. See below.
+
+// 7. Abort
+{ name: "AbortError" }          // also code: "ERR_CANCELED", also __CANCEL__: true
+// -> kind "aborted", canRetry false, message "Cancelled." Render nothing.`;
+
+const bodyDiscovery = `// Where the body is looked for, in order:
+raw.body -> raw.data -> raw.response.data -> raw.response.body -> raw
+
+// Where the status is looked for, in order:
+raw.status -> raw.statusCode -> raw.response.status -> raw.response.statusCode -> body.status
+
+// Where detail comes from, in order:
+body.detail -> body.title -> body.message -> body.error
+
+// So an Axios rejection, a fetch wrapper that attaches .body, and a plain
+// { status, body } object all normalise without a per-client adapter.`;
+
+const retryAfter = `// delta-seconds. Must be digits only: "20.5" and "-5" are rejected.
+{ status: 429, headers: { "retry-after": "20" } }
+// -> retryAfterMs 20000
+
+// HTTP-date. Resolved against the clock port, floored at 0 for a date in the past.
+{ status: 429, headers: { "retry-after": "Wed, 08 Oct 2026 12:00:30 GMT" } }
+// -> retryAfterMs = that instant minus now, never negative
+
+// A real Headers instance works too: the lookup calls .get("retry-after") when it exists.
+{ status: 429, response: { headers: new Headers({ "Retry-After": "20" }) } }
+
+// Last resort, for clients that have already parsed the header.
+{ status: 429, retryAfterMs: 20000 }`;
+
+const canRetryCode = `// canRetry    could retrying ever work for this kind
+// canRetryNow could it work yet
+
+failure.canRetryNow === failure.canRetry && (failure.retryInMs === null || failure.retryInMs <= 0)
+
+// A 429 with Retry-After: 20 one second after it arrived
+failure.kind        // "rateLimited"
+failure.canRetry    // true
+failure.retryInMs   // 19000, counting down live
+failure.canRetryNow // false
+
+// The same failure twenty-one seconds later
+failure.retryInMs   // 0
+failure.canRetryNow // true`;
+
+const classifyCode = `// One classifier for the whole app, set once.
+<UnruffledProvider
+  defaults={{
+    classify: (failure) => {
+      // 402 is a billing wall here, not a generic client error.
+      if (failure.status === 402) return "forbidden";
+      // Returning undefined keeps the default mapping, so one status can be
+      // special-cased without restating the table.
+      return undefined;
+    },
+    messages: {
+      forbidden: "Your plan does not include this. Contact your administrator.",
+      conflict: "Someone else edited this record. Reload to see their version.",
+    },
+  }}
+>
+  {children}
+</UnruffledProvider>
+
+// Or per call site. The hook's classify replaces the provider's; messages merge
+// over it, so a page can override one string without restating the catalog.
+const failure = useFailure(error, {
+  classify: (f) => (f.status === 418 ? "terminal" : undefined),
+  messages: { terminal: "That endpoint is decommissioned." },
+});`;
+
+const defaultMessages = `aborted:     "Cancelled."
+offline:     "You appear to be offline."
+auth:        "Your session has expired. Sign in to continue."
+forbidden:   "You do not have permission to do that."
+missing:     "That item no longer exists."
+conflict:    "Someone else changed this. Reload to see the latest version."
+validation:  "Some details need fixing."
+rateLimited: "Too many requests. Try again shortly."
+retryable:   "That did not go through. Try again."
+terminal:    "Something went wrong."`;
+
+const badRawMessage = `// Whatever the server happened to put in message, straight on screen.
+catch (error) {
+  setBanner(error.message);
+}
+
+// "Request failed with status code 422"
+// "Failed to fetch"
+// "ERR_CONNECTION_REFUSED"`;
+
+const goodRawMessage = `const failure = useFailure(error);
+
+<p {...failure.summaryProps}>{failure.message}</p>
+
+{failure.detail ? (
+  <details>
+    <summary>Technical details</summary>
+    <p>{failure.detail}</p>
+  </details>
+) : null}
+
+// message is user-facing and localisable. detail carries the server text,
+// collapsed, for the person who has to paste it into a bug report.`;
+
+const badRetryButton = `// Always offered, so the user presses it on a 403 and watches it fail again.
+{failure ? <button onClick={save.retry}>Try again</button> : null}`;
+
+const goodRetryButton = `{failure?.canRetryNow ? <button onClick={save.retry}>Try again</button> : null}
+
+{failure?.kind === "auth" ? <a href="/sign-in">Sign in</a> : null}
+{failure?.kind === "forbidden" ? <RequestAccess /> : null}
+{failure?.kind === "missing" ? <a href="/customers">Back to customers</a> : null}
+
+// canRetryNow is false for aborted, auth, forbidden, missing, validation and
+// terminal, and false for rateLimited until the stated delay has elapsed.`;
+
+const badValidationToast = `// A toast that says "Some details need fixing" and then disappears,
+// leaving the user to find out which details, from memory.
+if (failure) toast.error(failure.message);`;
+
+const goodValidationToast = `if (failure?.kind === "validation") {
+  // fields is a readonly FieldFailure[] with dotted paths, so it maps
+  // directly onto whatever your form library keys errors by.
+  for (const field of failure.fields ?? []) {
+    form.setError(field.path, { message: field.message });
+  }
+} else if (failure) {
+  toast.error(failure.message);
+}`;
+
+const taxonomy = [
+  {
+    name: "aborted",
+    type: "no status",
+    default: "false",
+    description:
+      "We cancelled it: an unmount mid-request, a superseded attempt, an explicit cancel(). Recognised from name AbortError, code ERR_CANCELED, or __CANCEL__ true.",
+    why: "Render nothing. The user did not ask for this to be reported, and reporting it reads as a failure they caused.",
+  },
+  {
+    name: "offline",
+    type: "no status",
+    default: "true",
+    description:
+      "The online flag was false, which short-circuits before the status is even read. Also the kind a fetch TypeError gets whenever the online flag is known.",
+    why: "Retry is worth offering, but by hand. Retrying automatically with no network burns the attempt budget before the network returns.",
+  },
+  {
+    name: "auth",
+    type: "401",
+    default: "false",
+    description: "The session is gone.",
+    why: "The recovery action is to sign in. A retry button sends the same expired credential again.",
+  },
+  {
+    name: "forbidden",
+    type: "403",
+    default: "false",
+    description: "Authenticated, not permitted.",
+    why: "The recovery action is to request access or change account. Nothing about pressing the button again changes the answer.",
+  },
+  {
+    name: "missing",
+    type: "404, 410",
+    default: "false",
+    description: "The thing is not there.",
+    why: "The recovery action is navigation, not retry.",
+  },
+  {
+    name: "conflict",
+    type: "409, 412",
+    default: "true",
+    description:
+      "Someone else changed it, or a precondition no longer holds. The recovery action is to reload and merge.",
+    why: "canRetry is true here, which surprises people. Retrying after a reload can succeed, so a retry affordance is not a lie. It is still the wrong first affordance: offer reload.",
+  },
+  {
+    name: "validation",
+    type: "422 always; 400 only with field errors; any response with field errors and no status",
+    default: "false",
+    description:
+      "The input is wrong, and the response says which parts. fields carries dotted paths and messages.",
+    why: "A 400 with no field errors is terminal, not validation. Classifying a bare 400 as validation would put a form error on a form that has nothing to fix.",
+  },
+  {
+    name: "rateLimited",
+    type: "429",
+    default: "true",
+    description:
+      "Retry is possible, but only after the stated delay. retryAfterMs and retryInMs are set when Retry-After was parseable.",
+    why: "canRetry is true and canRetryNow is false until the window closes. That distinction is the whole reason both exist.",
+  },
+  {
+    name: "retryable",
+    type: "408, 425, 500 and above; a fetch TypeError when the online flag is unknown",
+    default: "true",
+    description:
+      "A transient server or transport failure. 507 and 509 are listed explicitly and are also covered by the 500-and-above rule.",
+    why: "Safe to offer an immediate retry, and the only kind the automatic retry policy will act on without a stated delay.",
+  },
+  {
+    name: "terminal",
+    type: "400 without field errors; any other status, including 402, 405 and 451; an Error with no status and no body; anything unreadable",
+    default: "false",
+    description: "Classified, but nothing above fits.",
+    why: "Report and offer support, not retry. An input the normaliser cannot read at all lands here, which is the honest answer rather than a crash inside error handling.",
+  },
+];
+
+const options = [
+  {
+    name: "classify",
+    type: "(failure: NormalizedFailure) => FailureKind | undefined",
+    description:
+      "Runs on the fully built failure and may return a different kind. Returning undefined, or the kind it was given, keeps the default.",
+    why: "Overriding recomputes canRetry and swaps the message for the new kind's catalog entry, so a reclassification cannot leave an inconsistent pair behind.",
+  },
+  {
+    name: "messages",
+    type: "Partial<Record<FailureKind, string>>",
+    default: "the ten strings below",
+    description:
+      "User-facing copy, keyed by kind. Merged over the provider's catalog, which is merged over the defaults.",
+    why: "The taxonomy is the valuable part and it is language-independent. Localising it should not mean re-implementing it.",
+  },
+  {
+    name: "online",
+    type: "boolean",
+    default: "navigator.onLine, or undefined with no navigator",
+    description:
+      "Whether the client believes it has a network. false classifies everything as offline before the status is read.",
+    why: "Injected rather than read inside core, so core stays DOM-free and a test can drive the offline path without touching a global.",
+  },
+  {
+    name: "ports",
+    type: "Partial<Ports>",
+    default: "the provider's ports, then DOM ports",
+    description:
+      "Overrides individual ports. Only clock is used here, for the arrival timestamp and the countdown.",
+  },
+  {
+    name: "root",
+    type: "Document | ShadowRoot",
+    default: "the owning document",
+    description: "Scopes the DOM ports to a shadow root or a secondary window.",
+  },
+];
+
+const api = [
+  { name: "kind", type: "FailureKind", description: "One of the ten values in the table above." },
+  {
+    name: "message",
+    type: "string",
+    description:
+      "Short, user-facing, no internals. Safe in a toast or inline. Comes from the message catalog, not from the server.",
+  },
+  {
+    name: "detail",
+    type: "string | undefined",
+    description: "Server text, for a collapsed disclosure. Never shown by default.",
+    why: "Kept separate from message precisely so that showing one does not mean showing the other.",
+  },
+  { name: "status", type: "number | undefined", description: "The HTTP status, when one was found." },
+  {
+    name: "retryAfterMs",
+    type: "number | undefined",
+    description:
+      "The parsed Retry-After delay. Set whenever the header was present and parseable, which includes a 503 that carries one, not only a 429.",
+  },
+  {
+    name: "fields",
+    type: "readonly FieldFailure[] | undefined",
+    description: "Field-scoped messages with dotted paths. Omitted rather than empty when there are none.",
+  },
+  {
+    name: "canRetry",
+    type: "boolean",
+    description:
+      "Whether a retry affordance is honest for this kind at all. False for aborted, auth, forbidden, missing, validation and terminal.",
+  },
+  {
+    name: "canRetryNow",
+    type: "boolean",
+    description: "canRetry and the stated delay has elapsed. This is the one to bind a retry button to.",
+  },
+  {
+    name: "retryInMs",
+    type: "number | null",
+    description:
+      "Milliseconds until a retry could succeed, counting down live. null when there is no stated delay.",
+    why: "Measured from the moment the failure arrived, not from whenever the component rendered, so a slow render does not inflate the wait.",
+  },
+  {
+    name: "summaryProps",
+    type: '{ role: "alert"; "data-kind": FailureKind }',
+    description:
+      "Spread onto a short summary element. role alert announces the message on appearance, and data-kind is there to style by kind without a class map.",
+  },
+  { name: "raw", type: "unknown", description: "The original rejection, for logging. Never render it." },
+];
+---
+
+<DocPage
+  title="useFailure"
+  eyebrow="Primitive"
+  path="components/use-failure"
+  lede="Turns whatever a rejected promise carries into one shape with a kind, a user-facing message, field errors and an honest answer to whether retrying could work."
+  description="useFailure normalises HTTP, RFC 9457, JSON:API and fetch failures into ten kinds, each with canRetry, canRetryNow and a live Retry-After countdown."
+  meta={[
+    { label: "Import", value: "@unruffled/react" },
+    { label: "Kinds", value: "10" },
+    { label: "Layer", value: "React 2.07 kB brotli" },
+  ]}
+>
+  <Section id="description" title="Description">
+    <p>
+      <code>err.message</code> is not an error UX. What a user needs to know is whether the thing they did can be
+      tried again, whether it is their input that is wrong, whether they are signed out, and how long to wait. Those
+      are four different interfaces, and choosing between them is a classification problem that most applications
+      solve again from scratch, per screen.
+    </p>
+    <p>
+      <code>useFailure</code> does that classification. You hand it the rejection exactly as it arrived and it returns
+      a <code>FailureApi</code>: a <strong>kind</strong> drawn from a fixed set of ten, a message that is safe to
+      show, the server's own text kept separately, field-scoped errors when the response carried them, and the two
+      retry booleans that decide whether a retry button is honest.
+    </p>
+    <p>
+      It is pure apart from one thing: it records the clock reading at which the failure arrived, so a{" "}
+      <code>Retry-After</code> countdown measures from the response rather than from render. Pass{" "}
+      <code>null</code> and it returns <code>null</code>, holding no timers and no subscriptions.
+    </p>
+    <Callout tone="note" title="What it is not">
+      <p>
+        It is not a data layer and it does not perform requests. It classifies a value you already have.{" "}
+        <a href={href("components/use-action")}>useAction</a> runs the request and hands you{" "}
+        <code>save.failure</code>; this hook turns that into an interface. The two are separable on purpose,
+        so a failure from your existing query client normalises the same way.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="demo" title="Live demo">
+    <Demo
+      title="Every status, classified"
+      hint="Pick a response"
+      note="The column that matters is canRetry. It is false for four of the eight responses here, and a retry button on any of those four would be a lie."
+    >
+      <FailureKindsDemo client:visible />
+    </Demo>
+  </Section>
+
+  <Section id="usage" title="Basic usage">
+    <p>
+      One call, then branch on the kind. The order below is the order that matters: field errors onto the
+      fields, everything else into one summary, and a retry affordance only when retrying could work now.
+    </p>
+    <Snippet code={basicUsage} name="SaveCustomer.tsx" />
+    <p>There is no loading state and no error boundary to wire. The hook is synchronous.</p>
+    <Snippet code={nullCase} name="the null case" />
+  </Section>
+
+  <Section id="taxonomy" title="The taxonomy">
+    <p>
+      Ten kinds, chosen because each one implies a different recovery action. In the table, read{" "}
+      <strong>Type</strong> as the statuses that map to the kind and <strong>Default</strong> as the value of{
+        " "
+      }
+      <code>canRetry</code>.
+    </p>
+    <PropsTable nameHeading="Kind" rows={taxonomy} />
+    <p>
+      Two orderings are worth knowing. An <code>aborted</code> check runs first, so a cancelled request is never
+      reported as a failure whatever status it carried. An <code>online</code> flag of <code>false</code>{" "}
+      runs second, so a request that failed while the client was offline is labelled{" "}
+      <code>offline</code> rather than being given a status-derived kind.
+    </p>
+    <Callout tone="warning" title="400 is not validation on its own">
+      <p>
+        A 400 becomes <code>validation</code> only when the response actually carried field errors. A bare 400 becomes
+        <code>terminal</code>. The alternative would put "some details need fixing" on a form with nothing to
+        fix, and leave the user hunting for a field that is not marked.
+      </p>
+    </Callout>
+  </Section>
+
+  <Section id="payloads" title="Payload shapes understood">
+    <p>
+      The normaliser reads the shapes real APIs return, so there is no per-client adapter to write. Field
+      errors are collected from <code>field_errors</code>, <code>fieldErrors</code>, <code>errors</code> as either
+      a map or a list, and <code>violations</code>. Paths come from <code>path</code>,{" "}
+      <code>field</code>, <code>name</code> or <code>source.pointer</code>, and messages from{" "}
+      <code>message</code>, <code>detail</code> or <code>title</code>.
+    </p>
+    <Snippet code={payloads} lang="ts" name="input and normalised result" />
+    <p>
+      Paths are normalised onto one dotted form. A JSON Pointer loses its leading slash and its{" "}
+      <code>data</code> and <code>attributes</code> segments, RFC 6901 escapes are resolved, and an array path is
+      joined with dots. That is what lets <code>failure.fields</code> be handed straight to a form library without
+      a translation step.
+    </p>
+    <Snippet code={bodyDiscovery} lang="ts" name="where it looks" />
+    <Callout tone="note" title="A fetch TypeError is offline, not retryable, in a browser">
+      <p>
+        A <code>fetch</code> network failure is a <code>TypeError</code> with no status and no body. When the hook
+        knows the online flag, which in a browser it always does because it reads{" "}
+        <code>navigator.onLine</code>, that case classifies as <code>offline</code>. It classifies as{" "}
+        <code>retryable</code> only when the flag is unknown, which means server rendering or a runtime with no{
+          " "
+        }
+        <code>navigator</code>. Both kinds have <code>canRetry</code> true, so a retry affordance is correct either
+        way; the message and the suggested recovery differ. Pass <code>online</code> explicitly if you want one
+        of them deterministically.
+      </p>
+    </Callout>
+    <p>
+      Everything the normaliser produces is plain text destined for a text node. No field ever contains
+      markup, and none of these strings should be passed to an HTML sink. <code>raw</code> is kept for logging and
+      should never be rendered.
+    </p>
+  </Section>
+
+  <Section id="can-retry" title="canRetry versus canRetryNow">
+    <p>
+      <code>canRetry</code> answers whether retrying could <em>ever</em> work for this kind.{" "}
+      <code>canRetryNow</code> additionally answers whether it could work <em>yet</em>. Bind buttons to the
+      second one.
+    </p>
+    <Snippet code={canRetryCode} lang="ts" name="the difference" />
+    <p>
+      They differ for exactly one kind in the default mapping: <code>rateLimited</code>, while its{" "}
+      <code>Retry-After</code> window is still open. That is the case the ecosystem normally gets wrong. A cache
+      that honours the header internally and leaves the button enabled invites the user to hammer an endpoint that
+      has already told them to stop, and each refused attempt extends the window.
+    </p>
+    <p>
+      <code>canRetry</code> is also exposed on the action itself as <code>save.canRetry</code>, which is the
+      same value computed from the same failure. Use whichever is already in scope.
+    </p>
+  </Section>
+
+  <Section id="retry-after" title="Retry-After">
+    <p>
+      The header has two legal forms and both occur in the wild. Delta-seconds must be digits only; a signed
+      or fractional value is rejected rather than guessed at. An HTTP-date is resolved against the clock port
+      and floored at zero, so a date already in the past means retry now rather than a negative wait. An
+      unparseable value yields no delay at all, which leaves <code>canRetryNow</code> equal to{" "}
+      <code>canRetry</code>.
+    </p>
+    <Snippet code={retryAfter} lang="ts" name="both forms" />
+    <p>
+      The countdown is a return value, not an internal detail. <code>retryInMs</code> updates from the frame port
+      and is bucketed to 100ms, so a number that changes ten times a second does not re-render sixty times a second.
+      Under reduced motion the bucket widens to one second: the number stays accurate and keeps counting, because
+      reduction means less animation, not less information. A rate-limited user needs the number more than anyone.
+    </p>
+    <p>
+      The delay is attached whenever the header was found, not only for a 429. A 503 that states a{" "}
+      <code>Retry-After</code> gets a <code>retryAfterMs</code> and therefore a countdown too.
+    </p>
+  </Section>
+
+  <Section id="api" title="API">
+    <h3>Options</h3>
+    <p>
+      Every option is optional, and the hook works with no provider. Resolution order for{" "}
+      <code>classify</code> is the hook's own value, then the provider's. For <code>messages</code> it is a merge:
+      defaults, then the provider's catalog, then the hook's.
+    </p>
+    <PropsTable rows={options} />
+    <h3>FailureApi</h3>
+    <p>
+      The return value is a <code>NormalizedFailure</code> with three additions:{" "}
+      <code>retryInMs</code>, <code>canRetryNow</code> and <code>summaryProps</code>. It is{" "}
+      <code>null</code> when the input was <code>null</code> or <code>undefined</code>.
+    </p>
+    <PropsTable nameHeading="Property" rows={api} />
+  </Section>
+
+  <Section id="customising" title="Customising classification">
+    <p>
+      The default table covers the statuses that carry an agreed meaning. It will not cover the ones your API
+      has given a local meaning to, which is what <code>classify</code> is for. It receives the fully built failure,
+      including <code>status</code>, <code>fields</code> and <code>detail</code>, and returns a kind or{" "}
+      <code>undefined</code>. Returning <code>undefined</code> falls through to the default, so one status can be
+      special-cased without restating the table.
+    </p>
+    <Snippet code={classifyCode} name="classify and messages" />
+    <Callout tone="warning" title="An override rewrites the pair">
+      <p>
+        Returning a different kind recomputes <code>canRetry</code> from that kind and replaces{" "}
+        <code>message</code> with the new kind's catalog entry. That is deliberate: a reclassification that kept
+        the old message or the old retry flag would produce a failure saying one thing and behaving as another.
+        If you want different copy, set it in <code>messages</code> for the kind you classified to.
+      </p>
+    </Callout>
+    <h3>The message catalog</h3>
+    <p>
+      These are the ten defaults. They are deliberately plain and deliberately not the server's text, which is
+      kept in <code>detail</code>.
+    </p>
+    <Snippet code={defaultMessages} lang="text" name="default messages" />
+    <p>
+      Put your catalog on <a href={href("api")}>UnruffledProvider</a> rather than at each call site. A taxonomy
+      whose copy drifts between screens is a taxonomy the user cannot learn.
+    </p>
+  </Section>
+
+  <Section id="mistakes" title="Common mistakes">
+    <Mistake
+      title="Showing err.message"
+      why="The server's message is written for whoever reads the logs. It names transports, status codes and internal services, it is not localised, and for a network failure it is the browser's own wording rather than anything your API chose. It is the right thing to collect and the wrong thing to display."
+      bad={badRawMessage}
+      good={goodRawMessage}
+    />
+    <Mistake
+      title="A retry button on a 403"
+      why="The same request will fail the same way. Every press costs the user a round trip and teaches them that the button is decoration. Six of the ten kinds have canRetry false — aborted, auth, forbidden, missing, validation and terminal — and rateLimited has canRetryNow false until its window closes."
+      bad={badRetryButton}
+      good={goodRetryButton}
+    />
+    <Mistake
+      title="A validation failure in a toast"
+      why="A toast is transient, is not associated with any field, and is announced once and then gone. The user is left to recall which of eleven inputs was wrong. The response already said which, and fields carries it as a dotted path."
+      bad={badValidationToast}
+      good={goodValidationToast}
+    />
+    <Callout tone="danger" title="Do not pair summaryProps with a toast">
+      <p>
+        <code>summaryProps</code> sets <code>role="alert"</code>, and the library already announces action
+        outcomes through <a href={href("components/announcer")}>the Announcer</a>. A banner, a toast and an
+        announcement all carrying the same sentence means a screen-reader user hears it three times. Pick one
+        surface per failure.
+      </p>
+    </Callout>
+  </Section>
+</DocPage>

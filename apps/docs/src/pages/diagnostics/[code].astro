@@ -32,9 +32,21 @@ const suppressSnippet = `import { diagnostics } from "@unruffled/core/diagnostic
 
 diagnostics.suppress("${code}");`;
 
-const detection = rule.static
-  ? "This condition is decidable from source, so it is reported both at runtime by the diagnostics bus and statically by @unruffled/eslint-plugin. The lint rule will usually reach you first."
-  : "This condition depends on what actually happened at runtime, such as how long a request took or whether a live region was mounted when it settled. It is reported by the diagnostics bus only; no lint rule can decide it from source.";
+/**
+ * Be precise about what actually reports each rule today.
+ *
+ * Only UX1001 to UX1004 have report sites in the shipped action machine. The rest describe
+ * defects the library has named but cannot yet observe, because the primitive that would
+ * detect them is not in 0.1.0. Saying otherwise would make the documentation claim a
+ * diagnostic that never fires.
+ */
+const REPORTED_TODAY = new Set(["UX1001", "UX1002", "UX1003", "UX1004"]);
+
+const detection = REPORTED_TODAY.has(code)
+  ? "The diagnostics bus reports this at runtime, from the action machine, in development builds. It is reported once per code per call site, so a rule inside a list row does not bury the console."
+  : rule.static
+    ? "This condition is decidable from source, so it is a candidate for a lint rule rather than a runtime check. Nothing reports it yet: the primitive it describes is not part of 0.1.0, and the lint plugin is not written. The rule is published so the code is stable before anything emits it."
+    : "Nothing reports this yet. It describes a defect in a primitive that is not part of 0.1.0, and the rule is published so the code is stable before anything emits it.";
 ---
 
 <Base title={`${code} · ${rule.title}`} path={`diagnostics/${code.toLowerCase()}`} description={rule.detail}>
@@ -56,7 +68,7 @@ const detection = rule.static
     <h2>How to fix it</h2>
     <p>{rule.fix}</p>
 
-    <h2>How it is detected</h2>
+    <h2>What reports it</h2>
     <p>{detection}</p>
 
     <h2>Suppressing it</h2>

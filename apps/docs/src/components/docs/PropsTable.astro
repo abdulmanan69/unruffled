@@ -38,12 +38,18 @@ const { rows, caption, nameHeading = "Option" } = Astro.props;
     {
       rows.map((row) => (
         <tr>
-          <th scope="row"><code class="is-name">{row.name}</code></th>
+          <th scope="row">
+            <code class="is-name">{row.name}</code>
+          </th>
           <td class="is-type">{row.type}</td>
           <td class="is-default">{row.default ?? "—"}</td>
           <td>
             <p>{row.description}</p>
-            {row.why ? <p><em>{row.why}</em></p> : null}
+            {row.why ? (
+              <p>
+                <em>{row.why}</em>
+              </p>
+            ) : null}
           </td>
         </tr>
       ))
